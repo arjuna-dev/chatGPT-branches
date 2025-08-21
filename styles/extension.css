@@ -1,0 +1,40 @@
+/**
+ * ChatGPT Branching Extension - Styles
+ * CSS that integrates with ChatGPT's design system
+ */
+
+/* Extension namespace to avoid conflicts */
+.chatgpt-branch-extension {
+  /* Base styles will be added as components are implemented */
+}
+
+/* Placeholder styles for future components */
+.branch-tabs-container {
+  /* Tab container styles */
+}
+
+.branch-tab {
+  /* Individual tab styles */
+}
+
+.branch-menu {
+  /* Hover menu styles */
+}
+
+.floating-button {
+  /* Floating button styles */
+}
+
+/* Ensure extension doesn't interfere with ChatGPT */
+.chatgpt-branch-extension * {
+  box-sizing: border-box;
+}
+
+/* Hide extension elements by default until properly initialized */
+.chatgpt-branch-extension {
+  display: none;
+}
+
+.chatgpt-branch-extension.initialized {
+  display: block;
+}

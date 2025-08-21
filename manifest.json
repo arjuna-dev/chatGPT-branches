@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT Branching Extension",
+  "version": "1.0.0",
+  "description": "Enhanced visualization and navigation for ChatGPT conversation branches",
+
+  "permissions": ["storage", "activeTab"],
+
+  "host_permissions": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "js": ["src/content.js"],
+      "css": ["styles/extension.css"],
+      "run_at": "document_end"
+    }
+  ],
+
+  "background": {
+    "service_worker": "src/background.js"
+  },
+
+  "action": {
+    "default_title": "ChatGPT Branching Extension",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "32": "assets/icon32.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+
+  "icons": {
+    "16": "assets/icon16.png",
+    "32": "assets/icon32.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["styles/*", "assets/*"],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"]
+    }
+  ]
+}
