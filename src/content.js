@@ -3595,6 +3595,11 @@ async function initializeExtension() {
     extensionState.treeBuilder.onTreeUpdated(async (treeState) => {
       console.log("Tree updated:", treeState);
 
+      // Render tabs when tree is updated
+      if (extensionState.tabRenderer) {
+        await renderTabsFromTree();
+      }
+
       // Auto-save tree data if enabled
       if (extensionState.storageManager && extensionState.conversationId) {
         const customizations =
@@ -4009,6 +4014,8 @@ window.chatgptBranchingExtension = {
     showModal,
     closeModal,
     getUIState,
+    getTabState,
+    renderTabsFromTree,
   },
 };
 /**
