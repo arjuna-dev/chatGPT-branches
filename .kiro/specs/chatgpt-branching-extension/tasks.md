@@ -14,7 +14,7 @@
   - Write functions to identify conversation container and set up DOM observation targets
   - _Requirements: 8.3, 8.6, 5.6_
 
-- [x] 3. Build branch detection core functionality
+- [-] 3. Build branch detection core functionality
 
   - Implement variant indicator detection using .tabular-nums selector with /^\d+\/\d+$/ pattern
   - Create functions to verify presence of Previous/Next response buttons using aria-label selectors
@@ -62,7 +62,7 @@
   - Write tab update logic to reflect current active branch
   - _Requirements: 1.1, 1.2, 1.3, 1.6_
 
-- [ ] 9. Build branch navigation controller
+- [x] 9. Build branch navigation controller
 
   - Implement NavigationController to programmatically click ChatGPT's variant buttons
   - Create path navigation logic to reach specific branches through button sequences
@@ -110,7 +110,7 @@
   - Write ARIA labels and descriptions for screen reader compatibility
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ] 15. Add comprehensive error handling and recovery
+- [x] 15. Add comprehensive error handling and recovery
 
   - Implement graceful degradation when DOM detection fails
   - Add retry logic for failed branch detection and navigation

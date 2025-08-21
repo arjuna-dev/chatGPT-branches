@@ -397,6 +397,103 @@ function simpleHash(str) {
 }
 
 /**
+ * Safely append child element with React conflict prevention
+ * @param {Element} parent - Parent element
+ * @param {Element} child - Child element to append
+ * @returns {boolean} Success status
+ */
+function safeAppendChild(parent, child) {
+  try {
+    // Check if parent is still in DOM and not controlled by React
+    if (!parent || !parent.isConnected) {
+      console.warn("Parent element not in DOM");
+      return false;
+    }
+
+    // Avoid appending to React-controlled elements
+    if (
+      parent.hasAttribute("data-reactroot") ||
+      parent.closest("[data-reactroot]") ||
+      parent.hasAttribute("data-react-checksum")
+    ) {
+      console.warn("Avoiding React-controlled element");
+      return false;
+    }
+
+    parent.appendChild(child);
+    return true;
+  } catch (error) {
+    console.error("Error in safeAppendChild:", error);
+    return false;
+  }
+}
+
+/**
+ * Safely insert element with React conflict prevention
+ * @param {Element} parent - Parent element
+ * @param {Element} newElement - Element to insert
+ * @param {Element} referenceElement - Reference element
+ * @returns {boolean} Success status
+ */
+function safeInsertBefore(parent, newElement, referenceElement) {
+  try {
+    // Check if parent is still in DOM and not controlled by React
+    if (!parent || !parent.isConnected) {
+      console.warn("Parent element not in DOM");
+      return false;
+    }
+
+    // Avoid inserting into React-controlled elements
+    if (
+      parent.hasAttribute("data-reactroot") ||
+      parent.closest("[data-reactroot]") ||
+      parent.hasAttribute("data-react-checksum")
+    ) {
+      console.warn("Avoiding React-controlled element");
+      return false;
+    }
+
+    parent.insertBefore(newElement, referenceElement);
+    return true;
+  } catch (error) {
+    console.error("Error in safeInsertBefore:", error);
+    return false;
+  }
+}
+
+/**
+ * Safely set innerHTML with React conflict prevention
+ * @param {Element} element - Element to modify
+ * @param {string} html - HTML content
+ * @returns {boolean} Success status
+ */
+function safeSetInnerHTML(element, html) {
+  try {
+    // Check if element is still in DOM and not controlled by React
+    if (!element || !element.isConnected) {
+      console.warn("Element not in DOM");
+      return false;
+    }
+
+    // Avoid modifying React-controlled elements
+    if (
+      element.hasAttribute("data-reactroot") ||
+      element.closest("[data-reactroot]") ||
+      element.hasAttribute("data-react-checksum")
+    ) {
+      console.warn("Avoiding React-controlled element");
+      return false;
+    }
+
+    element.innerHTML = html;
+    return true;
+  } catch (error) {
+    console.error("Error in safeSetInnerHTML:", error);
+    return false;
+  }
+}
+
+/**
  * Check if we're on a valid ChatGPT conversation page
  * @returns {boolean} True if on a valid conversation page
  */
@@ -463,6 +560,118 @@ function waitForElement(selector, timeout = 5000) {
   });
 }
 
+/**
+ * Safely initialize UI Manager with DOM conflict prevention
+ */
+async function safelyInitializeUI() {
+  try {
+    // Wait for a stable moment to inject UI
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Check if UI elements already exist (from previous initialization)
+    const existingUI = document.querySelector(".chatgpt-branching-extension");
+    if (existingUI) {
+      console.log("Removing existing UI elements");
+      existingUI.remove();
+    }
+
+    // Initialize UI with retry logic
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        const result = extensionState.uiManager.initialize();
+        if (result) {
+          return true;
+        }
+        attempts++;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (error) {
+        console.warn(
+          `UI initialization attempt ${attempts + 1} failed:`,
+          error
+        );
+        attempts++;
+        if (attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error("Error in safelyInitializeUI:", error);
+    return false;
+  }
+}
+
+/**
+ * Safely initialize DOM Observer with conflict prevention
+ */
+async function safelyInitializeDOMObserver() {
+  try {
+    // Ensure conversation container exists and is stable
+    const container = findConversationContainer();
+    if (!container) {
+      console.warn("No conversation container found for DOM Observer");
+      return false;
+    }
+
+    // Wait for container to be stable
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Initialize observer with error handling
+    const result = extensionState.domObserver.initialize();
+    return result;
+  } catch (error) {
+    console.error("Error in safelyInitializeDOMObserver:", error);
+    return false;
+  }
+}
+
+/**
+ * Safely load saved data with error handling
+ */
+async function safelyLoadSavedData() {
+  if (!extensionState.storageManager || !extensionState.conversationId) {
+    return;
+  }
+
+  try {
+    console.log(
+      "Loading saved tree data for conversation:",
+      extensionState.conversationId
+    );
+
+    const savedTreeData =
+      await extensionState.storageManager.loadConversationTree(
+        extensionState.conversationId
+      );
+
+    if (savedTreeData && extensionState.treeBuilder) {
+      extensionState.treeBuilder.importData(savedTreeData);
+      console.log("Loaded saved tree data for conversation");
+
+      // Trigger tab rendering after loading saved data
+      if (extensionState.tabRenderer) {
+        setTimeout(async () => {
+          try {
+            await renderTabsFromTree();
+            console.log("Rendered tabs from loaded tree data");
+          } catch (error) {
+            console.error("Error rendering tabs from loaded data:", error);
+          }
+        }, 500);
+      }
+    } else {
+      console.log("No saved tree data found for conversation");
+    }
+  } catch (error) {
+    console.error("Failed to load saved tree data:", error);
+  }
+}
+
 // ============================================================================
 // STORAGE MANAGER CLASS
 // ============================================================================
@@ -482,7 +691,9 @@ class StorageManager {
    * @returns {string} Storage key
    */
   getStorageKey(conversationId, dataType = "tree") {
-    return `${this.storagePrefix}${conversationId}_${dataType}`;
+    const key = `${this.storagePrefix}${conversationId}_${dataType}`;
+    console.log(`Generated storage key: ${key}`);
+    return key;
   }
 
   /**
@@ -518,8 +729,11 @@ class StorageManager {
 
       localStorage.setItem(key, finalData);
       console.log(`Saved conversation tree for ${conversationId}`, {
+        key: key,
         size: this.getDataSize(finalData),
         compressed: serializedData.length > this.compressionThreshold,
+        nodeCount: dataToSave.treeData?.nodeCount || 0,
+        rootBranches: dataToSave.treeData?.rootBranches?.length || 0,
       });
 
       return true;
@@ -540,7 +754,16 @@ class StorageManager {
       const rawData = localStorage.getItem(key);
 
       if (!rawData) {
-        console.log(`No saved tree found for conversation ${conversationId}`);
+        console.log(
+          `No saved tree found for conversation ${conversationId} with key ${key}`
+        );
+
+        // Debug: List all keys in localStorage to see what's there
+        const allKeys = Object.keys(localStorage).filter((k) =>
+          k.startsWith(this.storagePrefix)
+        );
+        console.log("Available storage keys:", allKeys);
+
         return null;
       }
 
@@ -1161,6 +1384,14 @@ class TreeBuilder {
   }
 
   /**
+   * Get current path
+   * @returns {string[]} Current path as array of node IDs
+   */
+  getCurrentPath() {
+    return [...this.currentPath];
+  }
+
+  /**
    * Get all nodes
    * @returns {Object[]} Array of all nodes
    */
@@ -1377,22 +1608,42 @@ class TreeBuilder {
    * @param {Object} data - Tree data to import
    */
   importData(data) {
+    console.log("Importing tree data:", data);
     this.clear();
 
-    if (data.nodes) {
-      this.nodes = new Map(Object.entries(data.nodes));
-    }
-    if (data.edges) {
-      this.edges = new Map(Object.entries(data.edges));
-    }
-    if (data.currentPath) {
-      this.currentPath = data.currentPath;
-    }
-    if (data.rootBranches) {
-      this.rootBranches = data.rootBranches;
-    }
+    try {
+      // Handle nodes - data.nodes is already an array of [key, value] pairs
+      if (Array.isArray(data.nodes)) {
+        this.nodes = new Map(data.nodes);
+        console.log(`Imported ${this.nodes.size} nodes`);
+      }
 
-    console.log("Imported tree data:", this.getTreeSummary());
+      // Handle edges - data.edges is already an array of [key, value] pairs
+      if (Array.isArray(data.edges)) {
+        this.edges = new Map(data.edges);
+        console.log(`Imported ${this.edges.size} edges`);
+      }
+
+      // Handle current path
+      if (Array.isArray(data.currentPath)) {
+        this.currentPath = [...data.currentPath];
+        console.log(`Imported current path:`, this.currentPath);
+      }
+
+      // Handle root branches
+      if (Array.isArray(data.rootBranches)) {
+        this.rootBranches = [...data.rootBranches];
+        console.log(`Imported ${this.rootBranches.length} root branches`);
+      }
+
+      console.log("Successfully imported tree data:", this.getTreeSummary());
+
+      // Notify that tree was updated
+      this.notifyTreeUpdated();
+    } catch (error) {
+      console.error("Error importing tree data:", error);
+      this.clear(); // Reset to clean state on error
+    }
   }
 }
 
@@ -1467,30 +1718,84 @@ class BranchDetector {
       return null;
     }
 
-    // Generate stable turn ID
-    const turnId = generateTurnId(turnElement, index);
+    // Generate base turn ID (without variant info)
+    const baseTurnId = generateTurnId(turnElement, index);
 
     // Classify turn role
     const role = this.classifyTurnRole(turnElement);
 
-    // Extract content preview
+    // Extract content preview for current variant
     const preview = this.extractContentPreview(turnElement);
+    const textHash = this.generateContentHash(turnElement);
 
-    // Create branch information object
+    // Create comprehensive branch information for ALL variants
     const branchInfo = {
-      turnId,
+      baseTurnId,
       turnIndex: index,
       currentVariant: variantInfo.current,
       totalVariants: variantInfo.total,
       role,
-      preview,
       element: turnElement,
       timestamp: Date.now(),
-      textHash: this.generateContentHash(turnElement),
+      // Create entries for all variants
+      variants: this.createVariantEntries(
+        baseTurnId,
+        variantInfo,
+        preview,
+        textHash,
+        role,
+        index
+      ),
+      // Mark which variant is currently active
+      activeVariantId: `${baseTurnId}_v${variantInfo.current}`,
     };
 
-    console.log("Detected branch:", branchInfo);
+    console.log("Detected comprehensive branch info:", branchInfo);
     return branchInfo;
+  }
+
+  /**
+   * Create variant entries for all possible variants of a turn
+   * @param {string} baseTurnId - Base turn ID
+   * @param {Object} variantInfo - Variant information {current, total}
+   * @param {string} currentPreview - Preview text for current variant
+   * @param {string} currentTextHash - Text hash for current variant
+   * @param {string} role - Turn role (user/assistant)
+   * @param {number} turnIndex - Turn index
+   * @returns {Object[]} Array of variant entries
+   */
+  createVariantEntries(
+    baseTurnId,
+    variantInfo,
+    currentPreview,
+    currentTextHash,
+    role,
+    turnIndex
+  ) {
+    const variants = [];
+
+    for (let i = 1; i <= variantInfo.total; i++) {
+      const variantId = `${baseTurnId}_v${i}`;
+      const isCurrentVariant = i === variantInfo.current;
+
+      variants.push({
+        id: variantId,
+        turnId: baseTurnId,
+        turnIndex: turnIndex,
+        variantIndex: i,
+        totalVariants: variantInfo.total,
+        role: role,
+        preview: isCurrentVariant
+          ? currentPreview
+          : `${role} message (variant ${i})`,
+        textHash: isCurrentVariant ? currentTextHash : null, // Will be filled when navigated to
+        isActive: isCurrentVariant,
+        isDiscovered: isCurrentVariant, // Only current variant is discovered initially
+        timestamp: Date.now(),
+      });
+    }
+
+    return variants;
   }
 
   /**
@@ -1744,6 +2049,37 @@ class BranchDetector {
   clear() {
     this.detectedBranches.clear();
     console.log("Cleared all detected branches");
+  }
+
+  /**
+   * Get current conversation turns from DOM
+   * @returns {Array} Array of current turn elements with metadata
+   */
+  getCurrentTurns() {
+    try {
+      const turns = findConversationTurns();
+      return turns.map((turnElement, index) => {
+        const turnId = this.generateTurnId(turnElement, index);
+        return {
+          turnId,
+          element: turnElement,
+          index,
+          role: this.determineTurnRole(turnElement),
+        };
+      });
+    } catch (error) {
+      console.warn("Error getting current turns:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Get detected branch by turn ID
+   * @param {string} turnId - Turn ID to look up
+   * @returns {Object|null} Branch info or null if not found
+   */
+  getDetectedBranch(turnId) {
+    return this.detectedBranches.get(turnId) || null;
   }
 
   /**
@@ -2855,6 +3191,535 @@ class TabRenderer {
 }
 
 // ============================================================================
+// NAVIGATION CONTROLLER CLASS
+// ============================================================================
+
+class NavigationController {
+  constructor(treeBuilder, branchDetector) {
+    this.treeBuilder = treeBuilder;
+    this.branchDetector = branchDetector;
+
+    // Navigation state
+    this.isNavigating = false;
+    this.navigationQueue = [];
+    this.currentNavigation = null;
+
+    // Timing and retry settings
+    this.navigationTimeout = 5000; // 5 seconds
+    this.retryAttempts = 3;
+    this.retryDelay = 500; // 500ms
+    this.buttonClickDelay = 200; // 200ms between button clicks
+
+    // Button selectors for ChatGPT's navigation controls
+    this.buttonSelectors = {
+      previous: [
+        'button[aria-label*="Previous"]',
+        'button[aria-label*="previous"]',
+        'button[title*="Previous"]',
+        'button[title*="previous"]',
+        'button:has(svg):contains("Previous")',
+        'button[data-testid*="previous"]',
+      ],
+      next: [
+        'button[aria-label*="Next"]',
+        'button[aria-label*="next"]',
+        'button[title*="Next"]',
+        'button[title*="next"]',
+        'button:has(svg):contains("Next")',
+        'button[data-testid*="next"]',
+      ],
+    };
+
+    // Navigation validation
+    this.validationSelectors = [
+      ".tabular-nums", // Variant counter
+      '[data-testid="conversation-turn"]',
+      "article[data-testid]",
+    ];
+  }
+
+  /**
+   * Navigate to a specific branch by node ID
+   * @param {string} targetNodeId - Target node ID to navigate to
+   * @returns {Promise<boolean>} Success status
+   */
+  async navigateToNode(targetNodeId) {
+    if (this.isNavigating) {
+      console.log("Navigation already in progress, queueing request");
+      return new Promise((resolve) => {
+        this.navigationQueue.push({ targetNodeId, resolve });
+      });
+    }
+
+    console.log("Starting navigation to node:", targetNodeId);
+
+    try {
+      this.isNavigating = true;
+      this.currentNavigation = {
+        targetNodeId,
+        startTime: Date.now(),
+        attempts: 0,
+      };
+
+      // Find path to target node
+      const path = this.treeBuilder.findPathToNode(targetNodeId);
+      if (!path || path.length === 0) {
+        console.warn("No path found to target node:", targetNodeId);
+        return false;
+      }
+
+      console.log("Navigation path:", path);
+
+      // Execute navigation sequence
+      const success = await this.executeNavigationPath(path);
+
+      if (success) {
+        console.log("Navigation completed successfully");
+        this.treeBuilder.updateCurrentPath(path);
+      } else {
+        console.warn("Navigation failed");
+      }
+
+      return success;
+    } catch (error) {
+      console.error("Navigation error:", error);
+      return false;
+    } finally {
+      this.isNavigating = false;
+      this.currentNavigation = null;
+
+      // Process queued navigation requests
+      this.processNavigationQueue();
+    }
+  }
+
+  /**
+   * Execute navigation along a specific path
+   * @param {string[]} path - Array of node IDs representing the path
+   * @returns {Promise<boolean>} Success status
+   */
+  async executeNavigationPath(path) {
+    if (path.length === 0) return true;
+
+    const currentPath = this.treeBuilder.getCurrentPath();
+    console.log("Current path:", currentPath);
+    console.log("Target path:", path);
+
+    // Find the divergence point
+    let divergenceIndex = 0;
+    while (
+      divergenceIndex < Math.min(currentPath.length, path.length) &&
+      currentPath[divergenceIndex] === path[divergenceIndex]
+    ) {
+      divergenceIndex++;
+    }
+
+    console.log("Divergence at index:", divergenceIndex);
+
+    // Navigate to each node in the path starting from divergence point
+    for (let i = divergenceIndex; i < path.length; i++) {
+      const targetNodeId = path[i];
+      const success = await this.navigateToSpecificNode(
+        targetNodeId,
+        i > 0 ? path[i - 1] : null
+      );
+
+      if (!success) {
+        console.error(
+          `Failed to navigate to node ${targetNodeId} at path index ${i}`
+        );
+        return false;
+      }
+
+      // Wait between navigation steps
+      if (i < path.length - 1) {
+        await this.delay(this.buttonClickDelay);
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Navigate to a specific node from current position
+   * @param {string} targetNodeId - Target node ID
+   * @param {string|null} parentNodeId - Parent node ID for context
+   * @returns {Promise<boolean>} Success status
+   */
+  async navigateToSpecificNode(targetNodeId, parentNodeId = null) {
+    console.log(
+      `Navigating to node: ${targetNodeId} from parent: ${parentNodeId}`
+    );
+
+    // Get current branch info to determine navigation direction
+    const currentBranchInfo = this.getCurrentBranchInfo();
+    if (!currentBranchInfo) {
+      console.warn("Could not determine current branch info");
+      return false;
+    }
+
+    // Get target node info from tree
+    const targetNode = this.treeBuilder.getNode(targetNodeId);
+    if (!targetNode) {
+      console.warn("Target node not found in tree:", targetNodeId);
+      return false;
+    }
+
+    // Determine navigation direction and steps
+    const navigationSteps = this.calculateNavigationSteps(
+      currentBranchInfo,
+      targetNode,
+      parentNodeId
+    );
+
+    if (navigationSteps.length === 0) {
+      console.log("Already at target node");
+      return true;
+    }
+
+    // Execute navigation steps with retry logic
+    for (let attempt = 0; attempt < this.retryAttempts; attempt++) {
+      try {
+        const success = await this.executeNavigationSteps(navigationSteps);
+        if (success) {
+          return true;
+        }
+      } catch (error) {
+        console.warn(`Navigation attempt ${attempt + 1} failed:`, error);
+      }
+
+      if (attempt < this.retryAttempts - 1) {
+        await this.delay(this.retryDelay * (attempt + 1));
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Calculate navigation steps needed to reach target
+   * @param {Object} currentBranchInfo - Current branch information
+   * @param {Object} targetNode - Target node information
+   * @param {string|null} parentNodeId - Parent node ID
+   * @returns {Array} Array of navigation steps
+   */
+  calculateNavigationSteps(currentBranchInfo, targetNode, parentNodeId) {
+    const steps = [];
+
+    // If we're navigating within the same turn (variant switching)
+    if (currentBranchInfo.turnId === targetNode.turnId) {
+      const currentVariant = currentBranchInfo.currentVariant || 1;
+      const targetVariant = targetNode.currentVariant || 1;
+
+      if (currentVariant !== targetVariant) {
+        const direction = targetVariant > currentVariant ? "next" : "previous";
+        const clickCount = Math.abs(targetVariant - currentVariant);
+
+        for (let i = 0; i < clickCount; i++) {
+          steps.push({ action: "click", direction, targetVariant });
+        }
+      }
+    } else {
+      // Cross-turn navigation - this is more complex and may require
+      // navigating up the tree and then down to the target
+      console.log("Cross-turn navigation not yet implemented");
+      // TODO: Implement cross-turn navigation in future enhancement
+    }
+
+    return steps;
+  }
+
+  /**
+   * Execute a sequence of navigation steps
+   * @param {Array} steps - Navigation steps to execute
+   * @returns {Promise<boolean>} Success status
+   */
+  async executeNavigationSteps(steps) {
+    for (const step of steps) {
+      if (step.action === "click") {
+        const success = await this.clickNavigationButton(step.direction);
+        if (!success) {
+          return false;
+        }
+
+        // Wait for UI to update
+        await this.delay(this.buttonClickDelay);
+
+        // Validate navigation worked
+        const isValid = await this.validateNavigation(step);
+        if (!isValid) {
+          console.warn("Navigation validation failed for step:", step);
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Click a navigation button (previous/next)
+   * @param {string} direction - 'previous' or 'next'
+   * @returns {Promise<boolean>} Success status
+   */
+  async clickNavigationButton(direction) {
+    const selectors = this.buttonSelectors[direction];
+    if (!selectors) {
+      console.error("Invalid navigation direction:", direction);
+      return false;
+    }
+
+    // Try each selector until we find a clickable button
+    for (const selector of selectors) {
+      try {
+        const buttons = document.querySelectorAll(selector);
+
+        for (const button of buttons) {
+          if (this.isButtonClickable(button)) {
+            console.log(`Clicking ${direction} button:`, button);
+
+            // Simulate human-like click
+            button.focus();
+            await this.delay(50);
+
+            button.click();
+
+            // Dispatch additional events for robustness
+            button.dispatchEvent(
+              new MouseEvent("mousedown", { bubbles: true })
+            );
+            button.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+            return true;
+          }
+        }
+      } catch (error) {
+        console.warn(`Error with selector "${selector}":`, error);
+      }
+    }
+
+    console.warn(`No clickable ${direction} button found`);
+    return false;
+  }
+
+  /**
+   * Check if a button is clickable
+   * @param {Element} button - Button element to check
+   * @returns {boolean} True if button is clickable
+   */
+  isButtonClickable(button) {
+    if (!button || button.disabled) return false;
+
+    const style = window.getComputedStyle(button);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (style.opacity === "0") return false;
+
+    // Check if button is in viewport
+    const rect = button.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+
+    return true;
+  }
+
+  /**
+   * Validate that navigation step was successful
+   * @param {Object} step - Navigation step that was executed
+   * @returns {Promise<boolean>} True if validation passed
+   */
+  async validateNavigation(step) {
+    // Wait a bit for DOM to update
+    await this.delay(100);
+
+    try {
+      // Check if variant counter updated
+      const variantInfo = this.getCurrentVariantInfo();
+      if (variantInfo && step.targetVariant) {
+        return variantInfo.current === step.targetVariant;
+      }
+
+      // Fallback: check if DOM structure is still valid
+      return this.validateDOMStructure();
+    } catch (error) {
+      console.warn("Navigation validation error:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Get current variant information from DOM
+   * @returns {Object|null} Variant info or null
+   */
+  getCurrentVariantInfo() {
+    try {
+      const variantElements = document.querySelectorAll(".tabular-nums");
+
+      for (const element of variantElements) {
+        const text = element.textContent.trim();
+        const match = text.match(/^(\d+)\/(\d+)$/);
+
+        if (match) {
+          return {
+            current: parseInt(match[1], 10),
+            total: parseInt(match[2], 10),
+            element,
+          };
+        }
+      }
+    } catch (error) {
+      console.warn("Error getting variant info:", error);
+    }
+
+    return null;
+  }
+
+  /**
+   * Validate DOM structure after navigation
+   * @returns {boolean} True if DOM structure is valid
+   */
+  validateDOMStructure() {
+    try {
+      // Check if key elements still exist
+      for (const selector of this.validationSelectors) {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length === 0) {
+          console.warn(
+            "Validation failed: missing elements for selector:",
+            selector
+          );
+          return false;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.warn("DOM validation error:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Get current branch information
+   * @returns {Object|null} Current branch info
+   */
+  getCurrentBranchInfo() {
+    try {
+      // Get current branch from branch detector
+      const currentTurns = this.branchDetector.getCurrentTurns();
+      if (currentTurns.length === 0) return null;
+
+      // Find the most recent turn with variant info
+      for (let i = currentTurns.length - 1; i >= 0; i--) {
+        const turn = currentTurns[i];
+        const branchInfo = this.branchDetector.getDetectedBranch(turn.turnId);
+
+        if (branchInfo && branchInfo.totalVariants > 1) {
+          return branchInfo;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.warn("Error getting current branch info:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Process queued navigation requests
+   */
+  async processNavigationQueue() {
+    if (this.navigationQueue.length === 0) return;
+
+    const nextRequest = this.navigationQueue.shift();
+    if (nextRequest) {
+      const success = await this.navigateToNode(nextRequest.targetNodeId);
+      nextRequest.resolve(success);
+    }
+  }
+
+  /**
+   * Cancel current navigation
+   */
+  cancelNavigation() {
+    if (this.currentNavigation) {
+      console.log(
+        "Cancelling navigation to:",
+        this.currentNavigation.targetNodeId
+      );
+      this.isNavigating = false;
+      this.currentNavigation = null;
+    }
+  }
+
+  /**
+   * Check if navigation is currently in progress
+   * @returns {boolean} True if navigating
+   */
+  isNavigationInProgress() {
+    return this.isNavigating;
+  }
+
+  /**
+   * Get navigation status
+   * @returns {Object} Navigation status
+   */
+  getNavigationStatus() {
+    return {
+      isNavigating: this.isNavigating,
+      currentNavigation: this.currentNavigation,
+      queueLength: this.navigationQueue.length,
+      settings: {
+        timeout: this.navigationTimeout,
+        retryAttempts: this.retryAttempts,
+        retryDelay: this.retryDelay,
+        buttonClickDelay: this.buttonClickDelay,
+      },
+    };
+  }
+
+  /**
+   * Update navigation settings
+   * @param {Object} settings - New settings
+   */
+  updateSettings(settings) {
+    if (settings.timeout) this.navigationTimeout = settings.timeout;
+    if (settings.retryAttempts) this.retryAttempts = settings.retryAttempts;
+    if (settings.retryDelay) this.retryDelay = settings.retryDelay;
+    if (settings.buttonClickDelay)
+      this.buttonClickDelay = settings.buttonClickDelay;
+
+    console.log("Navigation settings updated:", settings);
+  }
+
+  /**
+   * Utility delay function
+   * @param {number} ms - Milliseconds to delay
+   * @returns {Promise} Promise that resolves after delay
+   */
+  delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Get current state for debugging
+   * @returns {Object} Current state
+   */
+  getState() {
+    return {
+      isNavigating: this.isNavigating,
+      navigationQueue: this.navigationQueue.length,
+      currentNavigation: this.currentNavigation,
+      settings: {
+        navigationTimeout: this.navigationTimeout,
+        retryAttempts: this.retryAttempts,
+        retryDelay: this.retryDelay,
+        buttonClickDelay: this.buttonClickDelay,
+      },
+    };
+  }
+}
+
+// ============================================================================
 // UI MANAGER CLASS
 // ============================================================================
 
@@ -3518,33 +4383,119 @@ let extensionState = {
   performanceMonitor: null,
   uiManager: null,
   tabRenderer: null,
+  navigationController: null,
   conversationId: null,
   isInitialized: false,
 };
 
 // Initialize extension when DOM is ready
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initializeExtension);
+  document.addEventListener("DOMContentLoaded", safeInitializeExtension);
 } else {
-  initializeExtension();
+  safeInitializeExtension();
+}
+
+/**
+ * Safe initialization wrapper that handles React conflicts
+ */
+async function safeInitializeExtension() {
+  try {
+    // Wait for React to finish initial render
+    await waitForReactStability();
+
+    // Initialize with error boundaries
+    await initializeExtension();
+  } catch (error) {
+    console.error("Failed to initialize extension safely:", error);
+
+    // Retry after a longer delay if initialization fails
+    setTimeout(safeInitializeExtension, 3000);
+  }
+}
+
+/**
+ * Wait for React to stabilize before initializing extension
+ */
+async function waitForReactStability() {
+  console.log("Waiting for React to stabilize...");
+
+  // Wait for main element to exist
+  await waitForElement("main", 10000);
+
+  // Wait for conversation content to be present
+  await waitForElement(
+    '[data-testid="conversation-turn"], article, .group\\/conversation-turn',
+    8000
+  );
+
+  // Wait for React to finish rendering by checking for stability
+  let stableCount = 0;
+  const requiredStableChecks = 3;
+
+  while (stableCount < requiredStableChecks) {
+    const beforeCount = document.querySelectorAll("*").length;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const afterCount = document.querySelectorAll("*").length;
+
+    if (Math.abs(afterCount - beforeCount) < 5) {
+      stableCount++;
+    } else {
+      stableCount = 0; // Reset if DOM is still changing significantly
+    }
+  }
+
+  // Additional safety delay
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  console.log("React appears stable, proceeding with extension initialization");
 }
 
 async function initializeExtension() {
   console.log("Initializing ChatGPT Branching Extension...");
 
   try {
-    // Wait for page to be fully loaded
-    await waitForElement("main", 5000);
+    // Wrap all DOM operations in try-catch to prevent React conflicts
+    const initResult = await safelyInitializeComponents();
 
-    // Wait a bit more for dynamic content to load
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (!initResult.success) {
+      throw new Error(`Initialization failed: ${initResult.error}`);
+    }
 
+    console.log("Extension initialization completed successfully");
+  } catch (error) {
+    console.error("Error initializing ChatGPT Branching Extension:", error);
+
+    // Schedule retry with exponential backoff
+    const retryDelay = Math.min(
+      5000,
+      1000 * Math.pow(2, window.extensionRetryCount || 0)
+    );
+    window.extensionRetryCount = (window.extensionRetryCount || 0) + 1;
+
+    if (window.extensionRetryCount < 5) {
+      console.log(
+        `Retrying initialization in ${retryDelay}ms (attempt ${window.extensionRetryCount})`
+      );
+      setTimeout(safeInitializeExtension, retryDelay);
+    } else {
+      console.error(
+        "Max retry attempts reached, extension initialization failed"
+      );
+    }
+  }
+}
+
+/**
+ * Safely initialize all extension components with error boundaries
+ */
+async function safelyInitializeComponents() {
+  try {
     // Check if we're on a valid ChatGPT conversation page
     if (!isValidChatGPTPage()) {
       console.log(
         "Not a valid ChatGPT conversation page, extension not activated"
       );
-      return;
+      return { success: false, error: "Invalid page" };
     }
 
     // Extract conversation ID
@@ -3553,7 +4504,7 @@ async function initializeExtension() {
       console.error(
         "Could not extract conversation ID, extension not activated"
       );
-      return;
+      return { success: false, error: "No conversation ID" };
     }
 
     console.log(
@@ -3562,34 +4513,88 @@ async function initializeExtension() {
     );
 
     // Initialize Performance Monitor
-    extensionState.performanceMonitor = new PerformanceMonitor();
-
-    // Initialize Storage Manager
-    extensionState.storageManager = new StorageManager();
-
-    // Initialize UI Manager
-    extensionState.uiManager = new UIManager();
-    const uiInitialized = extensionState.uiManager.initialize();
-
-    if (!uiInitialized) {
-      console.error("Failed to initialize UI Manager");
-      return;
+    try {
+      extensionState.performanceMonitor = new PerformanceMonitor();
+    } catch (error) {
+      console.warn("Failed to initialize Performance Monitor:", error);
+      return { success: false, error: "Performance Monitor failed" };
     }
 
-    // Initialize Tab Renderer
-    extensionState.tabRenderer = new TabRenderer(extensionState.uiManager);
-    extensionState.tabRenderer.initialize(
-      extensionState.uiManager.tabsContainer
-    );
+    // Initialize Storage Manager
+    try {
+      extensionState.storageManager = new StorageManager();
+    } catch (error) {
+      console.warn("Failed to initialize Storage Manager:", error);
+      return { success: false, error: "Storage Manager failed" };
+    }
+
+    // Initialize UI Manager with error handling
+    try {
+      extensionState.uiManager = new UIManager();
+      const uiInitialized = await safelyInitializeUI();
+
+      if (!uiInitialized) {
+        console.error("Failed to initialize UI Manager");
+        return { success: false, error: "UI Manager failed" };
+      }
+    } catch (error) {
+      console.error("UI Manager initialization error:", error);
+      return { success: false, error: "UI Manager exception" };
+    }
+
+    // Initialize Tab Renderer with error handling
+    try {
+      extensionState.tabRenderer = new TabRenderer(extensionState.uiManager);
+      extensionState.tabRenderer.initialize(
+        extensionState.uiManager.tabsContainer
+      );
+    } catch (error) {
+      console.error("Tab Renderer initialization error:", error);
+      return { success: false, error: "Tab Renderer failed" };
+    }
 
     // Set up tab selection callback
     extensionState.uiManager.onTabSelected = async (tabId, tabData) => {
       console.log("Tab selected:", tabId, tabData);
-      // TODO: Implement navigation to selected branch (Task 9)
+
+      // Navigate to selected branch using NavigationController
+      if (extensionState.navigationController) {
+        const success =
+          await extensionState.navigationController.navigateToNode(tabId);
+        if (success) {
+          console.log("Successfully navigated to branch:", tabId);
+        } else {
+          console.warn("Failed to navigate to branch:", tabId);
+        }
+      }
     };
 
     // Initialize Tree Builder
-    extensionState.treeBuilder = new TreeBuilder();
+    try {
+      extensionState.treeBuilder = new TreeBuilder();
+    } catch (error) {
+      console.error("Tree Builder initialization error:", error);
+      return { success: false, error: "Tree Builder failed" };
+    }
+
+    // Initialize Branch Detector first (needed by Navigation Controller)
+    try {
+      extensionState.branchDetector = new BranchDetector();
+    } catch (error) {
+      console.error("Branch Detector initialization error:", error);
+      return { success: false, error: "Branch Detector failed" };
+    }
+
+    // Initialize Navigation Controller
+    try {
+      extensionState.navigationController = new NavigationController(
+        extensionState.treeBuilder,
+        extensionState.branchDetector
+      );
+    } catch (error) {
+      console.error("Navigation Controller initialization error:", error);
+      return { success: false, error: "Navigation Controller failed" };
+    }
 
     // Set up tree builder callbacks
     extensionState.treeBuilder.onTreeUpdated(async (treeState) => {
@@ -3600,17 +4605,17 @@ async function initializeExtension() {
         await renderTabsFromTree();
       }
 
-      // Auto-save tree data if enabled
+      // Auto-save tree data (always save for persistence)
       if (extensionState.storageManager && extensionState.conversationId) {
-        const customizations =
-          await extensionState.storageManager.loadCustomizations(
-            extensionState.conversationId
-          );
-        if (customizations.preferences.autoSave) {
-          await extensionState.storageManager.saveConversationTree(
-            extensionState.conversationId,
-            treeState
-          );
+        try {
+          const saveResult =
+            await extensionState.storageManager.saveConversationTree(
+              extensionState.conversationId,
+              treeState
+            );
+          console.log("Tree data saved:", saveResult);
+        } catch (error) {
+          console.error("Failed to save tree data:", error);
         }
       }
     });
@@ -3618,51 +4623,73 @@ async function initializeExtension() {
     extensionState.treeBuilder.onPathChanged(async (newPath, oldPath) => {
       console.log("Path changed:", { newPath, oldPath });
 
-      // Save path change if auto-save is enabled
+      // Save path change (always save for persistence)
       if (extensionState.storageManager && extensionState.conversationId) {
-        const customizations =
-          await extensionState.storageManager.loadCustomizations(
-            extensionState.conversationId
-          );
-        if (customizations.preferences.autoSave) {
+        try {
           const treeState = extensionState.treeBuilder.getTreeState();
-          await extensionState.storageManager.saveConversationTree(
-            extensionState.conversationId,
-            treeState
-          );
+          const saveResult =
+            await extensionState.storageManager.saveConversationTree(
+              extensionState.conversationId,
+              treeState
+            );
+          console.log("Path change saved:", saveResult);
+        } catch (error) {
+          console.error("Failed to save path change:", error);
         }
       }
     });
 
-    // Initialize Branch Detector
-    extensionState.branchDetector = new BranchDetector();
-
     // Set up branch detector callbacks
-    extensionState.branchDetector.onBranchDetected((branchInfo) => {
-      console.log("New branch detected:", branchInfo);
+    try {
+      extensionState.branchDetector.onBranchDetected(async (branchInfo) => {
+        console.log("New branch detected:", branchInfo);
 
-      // Add branch to tree
-      if (extensionState.treeBuilder) {
-        extensionState.treeBuilder.addNode(branchInfo);
+        // Add branch to tree
+        if (extensionState.treeBuilder) {
+          extensionState.treeBuilder.addNode(branchInfo);
+
+          // Save immediately when new branch is detected
+          if (extensionState.storageManager && extensionState.conversationId) {
+            try {
+              const treeState = extensionState.treeBuilder.getTreeState();
+              const saveResult =
+                await extensionState.storageManager.saveConversationTree(
+                  extensionState.conversationId,
+                  treeState
+                );
+              console.log("New branch saved:", saveResult);
+            } catch (error) {
+              console.error("Failed to save new branch:", error);
+            }
+          }
+        }
+      });
+
+      extensionState.branchDetector.onBranchUpdated((updated, previous) => {
+        console.log("Branch updated:", { updated, previous });
+
+        // Update tree with new branch info
+        if (extensionState.treeBuilder) {
+          extensionState.treeBuilder.updateBranch(updated);
+        }
+      });
+    } catch (error) {
+      console.error("Branch Detector callback setup error:", error);
+      return { success: false, error: "Branch Detector callbacks failed" };
+    }
+
+    // Initialize DOM Observer with error handling
+    try {
+      extensionState.domObserver = new DOMObserver();
+      const observerInitialized = await safelyInitializeDOMObserver();
+
+      if (!observerInitialized) {
+        console.error("Failed to initialize DOM Observer");
+        return { success: false, error: "DOM Observer failed" };
       }
-    });
-
-    extensionState.branchDetector.onBranchUpdated((updated, previous) => {
-      console.log("Branch updated:", { updated, previous });
-
-      // Update tree with new branch info
-      if (extensionState.treeBuilder) {
-        extensionState.treeBuilder.updateBranch(updated);
-      }
-    });
-
-    // Initialize DOM Observer
-    extensionState.domObserver = new DOMObserver();
-    const observerInitialized = extensionState.domObserver.initialize();
-
-    if (!observerInitialized) {
-      console.error("Failed to initialize DOM Observer");
-      return;
+    } catch (error) {
+      console.error("DOM Observer initialization error:", error);
+      return { success: false, error: "DOM Observer exception" };
     }
 
     // Set up DOM Observer callbacks to trigger branch detection
@@ -3777,57 +4804,120 @@ async function initializeExtension() {
       }
     }
 
-    // TODO: Initialize other extension components
-    // - Branch Detector
-    // - UI Manager
-    // - Storage Manager
-    // - Navigation Controller
+    // Load saved data and complete initialization
+    await safelyLoadSavedData();
 
     extensionState.isInitialized = true;
     console.log("ChatGPT Branching Extension initialized successfully");
 
     // Trigger initial tab rendering after a short delay to let DOM settle
     setTimeout(async () => {
-      if (extensionState.tabRenderer) {
-        await renderTabsFromTree();
+      try {
+        if (extensionState.tabRenderer) {
+          await renderTabsFromTree();
+        }
+      } catch (error) {
+        console.error("Error in initial tab rendering:", error);
       }
-    }, 1000);
+    }, 1500);
 
     // Log current state for debugging
-    console.log("Extension state:", {
-      conversationId: extensionState.conversationId,
-      domObserver: extensionState.domObserver.getState(),
-      branchDetector: extensionState.branchDetector.getState(),
-      treeBuilder: extensionState.treeBuilder.getTreeSummary(),
-      storageStats: extensionState.storageManager.getStorageStats(),
-      uiManager: extensionState.uiManager.getState(),
-      isInitialized: extensionState.isInitialized,
-    });
+    try {
+      console.log("Extension state:", {
+        conversationId: extensionState.conversationId,
+        domObserver: extensionState.domObserver?.getState(),
+        branchDetector: extensionState.branchDetector?.getState(),
+        treeBuilder: extensionState.treeBuilder?.getTreeSummary(),
+        storageStats: extensionState.storageManager?.getStorageStats(),
+        uiManager: extensionState.uiManager?.getState(),
+        navigationController: extensionState.navigationController?.getState(),
+        isInitialized: extensionState.isInitialized,
+      });
+    } catch (error) {
+      console.warn("Error logging extension state:", error);
+    }
+
+    return { success: true };
   } catch (error) {
-    console.error("Error initializing ChatGPT Branching Extension:", error);
+    console.error("Error in safelyInitializeComponents:", error);
+    return { success: false, error: error.message };
   }
 }
 
-// Handle page navigation (SPA routing)
+// Handle page navigation (SPA routing) with improved safety
 let lastUrl = window.location.href;
+let navigationTimeout = null;
+
 const navigationObserver = new MutationObserver(() => {
   const currentUrl = window.location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
-    console.log("Page navigation detected, reinitializing extension...");
+    console.log(
+      "Page navigation detected, scheduling extension reinitialization..."
+    );
 
-    // Clean up existing state
+    // Clear any pending reinitialization
+    if (navigationTimeout) {
+      clearTimeout(navigationTimeout);
+    }
+
+    // Schedule reinitialization with debouncing
+    navigationTimeout = setTimeout(async () => {
+      try {
+        await safelyCleanupAndReinitialize();
+      } catch (error) {
+        console.error("Error during navigation reinitialization:", error);
+      }
+    }, 1500); // Longer delay to let React finish navigation
+  }
+});
+
+/**
+ * Safely cleanup existing state and reinitialize
+ */
+async function safelyCleanupAndReinitialize() {
+  console.log("Cleaning up and reinitializing extension...");
+
+  try {
+    // Clean up existing state safely
     if (extensionState.domObserver) {
-      extensionState.domObserver.disconnect();
+      try {
+        extensionState.domObserver.disconnect();
+      } catch (error) {
+        console.warn("Error disconnecting DOM observer:", error);
+      }
     }
+
     if (extensionState.branchDetector) {
-      extensionState.branchDetector.clear();
+      try {
+        extensionState.branchDetector.clear();
+      } catch (error) {
+        console.warn("Error clearing branch detector:", error);
+      }
     }
+
     if (extensionState.treeBuilder) {
-      extensionState.treeBuilder.clear();
+      try {
+        extensionState.treeBuilder.clear();
+      } catch (error) {
+        console.warn("Error clearing tree builder:", error);
+      }
     }
+
+    if (extensionState.navigationController) {
+      try {
+        extensionState.navigationController.cancelNavigation();
+      } catch (error) {
+        console.warn("Error canceling navigation:", error);
+      }
+    }
+
     if (extensionState.uiManager) {
-      extensionState.uiManager.cleanup();
+      try {
+        extensionState.uiManager.cleanup();
+      } catch (error) {
+        console.warn("Error cleaning up UI manager:", error);
+      }
     }
 
     // Reset state
@@ -3839,16 +4929,27 @@ const navigationObserver = new MutationObserver(() => {
       performanceMonitor: null,
       uiManager: null,
       tabRenderer: null,
+      navigationController: null,
       conversationId: null,
       isInitialized: false,
     };
 
-    // Reinitialize after a short delay to let the page load
-    setTimeout(initializeExtension, 1000);
-  }
-});
+    // Reset retry counter for new page
+    window.extensionRetryCount = 0;
 
-navigationObserver.observe(document.body, { childList: true, subtree: true });
+    // Reinitialize with safe wrapper
+    await safeInitializeExtension();
+  } catch (error) {
+    console.error("Error in safelyCleanupAndReinitialize:", error);
+  }
+}
+
+// Start navigation observer with error handling
+try {
+  navigationObserver.observe(document.body, { childList: true, subtree: true });
+} catch (error) {
+  console.error("Failed to start navigation observer:", error);
+}
 
 // ============================================================================
 // UTILITY FUNCTIONS FOR STORAGE INTEGRATION
@@ -4016,6 +5117,78 @@ window.chatgptBranchingExtension = {
     getUIState,
     getTabState,
     renderTabsFromTree,
+    getNavigationState,
+    navigateToNode,
+    cancelNavigation,
+    updateNavigationSettings,
+    manualSave: async () => {
+      if (
+        extensionState.storageManager &&
+        extensionState.treeBuilder &&
+        extensionState.conversationId
+      ) {
+        const treeState = extensionState.treeBuilder.getTreeState();
+        console.log("Manual save - tree state:", treeState);
+        const result = await extensionState.storageManager.saveConversationTree(
+          extensionState.conversationId,
+          treeState
+        );
+        console.log("Manual save result:", result);
+        return result;
+      }
+      console.warn("Manual save failed - missing components");
+      return false;
+    },
+    manualLoad: async () => {
+      if (extensionState.storageManager && extensionState.conversationId) {
+        console.log(
+          "Manual load for conversation:",
+          extensionState.conversationId
+        );
+        const data = await extensionState.storageManager.loadConversationTree(
+          extensionState.conversationId
+        );
+        console.log("Manual load result:", data);
+        if (data && extensionState.treeBuilder) {
+          extensionState.treeBuilder.importData(data);
+          await renderTabsFromTree();
+          console.log("Manual load completed with tab rendering");
+        }
+        return data;
+      }
+      console.warn("Manual load failed - missing components");
+      return null;
+    },
+    manualScan: async () => {
+      console.log("Manual branch scan triggered");
+      const turns = findConversationTurns();
+      console.log(`Found ${turns.length} turns for manual scan`);
+
+      if (extensionState.branchDetector && extensionState.treeBuilder) {
+        const detectedBranches =
+          extensionState.branchDetector.detectBranches(turns);
+        console.log(`Detected ${detectedBranches.length} branches`);
+
+        if (detectedBranches.length > 0) {
+          extensionState.treeBuilder.buildFromBranches(detectedBranches);
+          await renderTabsFromTree();
+
+          // Save the detected branches
+          if (extensionState.storageManager && extensionState.conversationId) {
+            const treeState = extensionState.treeBuilder.getTreeState();
+            await extensionState.storageManager.saveConversationTree(
+              extensionState.conversationId,
+              treeState
+            );
+          }
+        }
+
+        return detectedBranches;
+      }
+
+      console.warn("Manual scan failed - missing components");
+      return [];
+    },
   },
 };
 /**
@@ -4056,4 +5229,49 @@ function getTabState() {
   }
 
   return extensionState.tabRenderer.getState();
+}
+
+/**
+ * Get navigation controller state for debugging
+ * @returns {Object} Navigation controller state
+ */
+function getNavigationState() {
+  if (!extensionState.navigationController) {
+    return { error: "Navigation Controller not available" };
+  }
+
+  return extensionState.navigationController.getState();
+}
+
+/**
+ * Navigate to a specific branch
+ * @param {string} nodeId - Node ID to navigate to
+ * @returns {Promise<boolean>} Success status
+ */
+async function navigateToNode(nodeId) {
+  if (!extensionState.navigationController) {
+    console.warn("Navigation Controller not available");
+    return false;
+  }
+
+  return await extensionState.navigationController.navigateToNode(nodeId);
+}
+
+/**
+ * Cancel current navigation
+ */
+function cancelNavigation() {
+  if (extensionState.navigationController) {
+    extensionState.navigationController.cancelNavigation();
+  }
+}
+
+/**
+ * Update navigation settings
+ * @param {Object} settings - New navigation settings
+ */
+function updateNavigationSettings(settings) {
+  if (extensionState.navigationController) {
+    extensionState.navigationController.updateSettings(settings);
+  }
 }

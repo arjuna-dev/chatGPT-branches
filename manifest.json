@@ -13,7 +13,7 @@
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "js": ["src/content.js"],
       "css": ["styles/extension.css"],
-      "run_at": "document_end"
+      "run_at": "document_idle"
     }
   ],
 
