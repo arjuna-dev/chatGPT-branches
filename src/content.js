@@ -892,8 +892,10 @@ class StorageManager {
       const keyData = [];
       for (const key of keys) {
         try {
-          const data = JSON.parse(localStorage.getItem(key));
-          keyData.push({ key, timestamp: data.timestamp || 0 });
+          const rawData = localStorage.getItem(key);
+          const decompressed = this.decompressData(rawData);
+          const data = decompressed ? JSON.parse(decompressed) : null;
+          keyData.push({ key, timestamp: data?.timestamp || 0 });
         } catch (error) {
           // Invalid data, mark for removal
           keyData.push({ key, timestamp: 0 });
