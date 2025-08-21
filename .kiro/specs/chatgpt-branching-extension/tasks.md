@@ -7,14 +7,14 @@
   - Configure content script injection for chatgpt.com domain
   - _Requirements: 7.1, 7.2_
 
-- [ ] 2. Implement DOM detection and conversation ID extraction
+- [x] 2. Implement DOM detection and conversation ID extraction
 
   - Create utility functions to extract conversation ID from ChatGPT URL patterns
   - Implement turn container detection using priority selectors ([data-testid="conversation-turn"], article, li[role="listitem"])
   - Write functions to identify conversation container and set up DOM observation targets
   - _Requirements: 8.3, 8.6, 5.6_
 
-- [ ] 3. Build branch detection core functionality
+- [x] 3. Build branch detection core functionality
 
   - Implement variant indicator detection using .tabular-nums selector with /^\d+\/\d+$/ pattern
   - Create functions to verify presence of Previous/Next response buttons using aria-label selectors
@@ -22,7 +22,7 @@
   - Implement stable turn ID generation with fallback strategies
   - _Requirements: 8.1, 8.2, 8.4, 8.6, 8.7_
 
-- [ ] 4. Create conversation tree data structure and management
+- [x] 4. Create conversation tree data structure and management
 
   - Implement BranchNode interface and ConversationTree data structure
   - Write methods for adding nodes, linking parent-child relationships, and updating current path
@@ -30,7 +30,7 @@
   - Implement tree traversal and path finding algorithms
   - _Requirements: 5.1, 5.4, 5.6_
 
-- [ ] 5. Implement localStorage persistence system
+- [x] 5. Implement localStorage persistence system
 
   - Create StorageManager class with save/load methods for conversation trees
   - Implement conversation-specific storage keys using conversation ID
@@ -38,7 +38,7 @@
   - Add data validation and migration handling for storage schema changes
   - _Requirements: 3.1, 3.2, 3.3, 5.6_
 
-- [ ] 6. Build MutationObserver system for dynamic updates
+- [x] 6. Build MutationObserver system for dynamic updates
 
   - Implement MutationObserver to monitor conversation container for DOM changes
   - Create event handlers for detecting new branches when users navigate variants
