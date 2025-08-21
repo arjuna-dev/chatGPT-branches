@@ -1,40 +1,547 @@
-/**
- * ChatGPT Branching Extension - Styles
- * CSS that integrates with ChatGPT's design system
- */
+/* ============================================================================
+   ChatGPT Branching Extension - Content Styles
+   ============================================================================ */
 
-/* Extension namespace to avoid conflicts */
-.chatgpt-branch-extension {
-  /* Base styles will be added as components are implemented */
+/* CSS Variables matching ChatGPT's design system */
+:root {
+  --chatgpt-bg-primary: #ffffff;
+  --chatgpt-bg-secondary: #f7f7f8;
+  --chatgpt-bg-tertiary: #ececf1;
+  --chatgpt-text-primary: #374151;
+  --chatgpt-text-secondary: #6b7280;
+  --chatgpt-text-muted: #9ca3af;
+  --chatgpt-border-light: #e5e7eb;
+  --chatgpt-border-medium: #d1d5db;
+  --chatgpt-accent-blue: #3b82f6;
+  --chatgpt-accent-blue-hover: #2563eb;
+  --chatgpt-accent-green: #10b981;
+  --chatgpt-accent-orange: #f59e0b;
+  --chatgpt-accent-red: #ef4444;
+  --chatgpt-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --chatgpt-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --chatgpt-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --chatgpt-radius-sm: 0.375rem;
+  --chatgpt-radius-md: 0.5rem;
+  --chatgpt-radius-lg: 0.75rem;
+  --chatgpt-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+
+  /* Extension-specific variables */
+  --branch-tab-height: 36px;
+  --branch-tab-padding: 8px 12px;
+  --branch-container-padding: 12px 16px;
+  --branch-animation-duration: 0.2s;
+  --branch-z-index-base: 1000;
+  --branch-z-index-dropdown: 1010;
+  --branch-z-index-modal: 1020;
 }
 
-/* Placeholder styles for future components */
-.branch-tabs-container {
-  /* Tab container styles */
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chatgpt-bg-primary: #212121;
+    --chatgpt-bg-secondary: #2f2f2f;
+    --chatgpt-bg-tertiary: #404040;
+    --chatgpt-text-primary: #ececec;
+    --chatgpt-text-secondary: #c5c5c5;
+    --chatgpt-text-muted: #8e8ea0;
+    --chatgpt-border-light: #4a4a4a;
+    --chatgpt-border-medium: #565656;
+  }
 }
 
-.branch-tab {
-  /* Individual tab styles */
+/* ============================================================================
+   Base Extension Container
+   ============================================================================ */
+
+.chatgpt-branching-extension {
+  font-family: var(--chatgpt-font-family);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--chatgpt-text-primary);
+  box-sizing: border-box;
+  position: relative;
+  z-index: var(--branch-z-index-base);
 }
 
-.branch-menu {
-  /* Hover menu styles */
-}
-
-.floating-button {
-  /* Floating button styles */
-}
-
-/* Ensure extension doesn't interfere with ChatGPT */
-.chatgpt-branch-extension * {
+.chatgpt-branching-extension *,
+.chatgpt-branching-extension *::before,
+.chatgpt-branching-extension *::after {
   box-sizing: border-box;
 }
 
-/* Hide extension elements by default until properly initialized */
-.chatgpt-branch-extension {
-  display: none;
+/* ============================================================================
+   Main UI Container
+   ============================================================================ */
+
+.branch-ui-container {
+  position: sticky;
+  top: 0;
+  background: var(--chatgpt-bg-primary);
+  border-bottom: 1px solid var(--chatgpt-border-light);
+  padding: var(--branch-container-padding);
+  margin: 0;
+  width: 100%;
+  z-index: var(--branch-z-index-base);
+  transition: all var(--branch-animation-duration) ease;
 }
 
-.chatgpt-branch-extension.initialized {
-  display: block;
+.branch-ui-container.hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Tab Container and Scrolling
+   ============================================================================ */
+
+.branch-tabs-container {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.branch-tabs-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  padding: 4px 0;
+}
+
+.branch-tabs-wrapper::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+/* Scroll indicators */
+.branch-scroll-indicator {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  background: var(--chatgpt-bg-primary);
+  border: 1px solid var(--chatgpt-border-light);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: var(--chatgpt-shadow-sm);
+  transition: all var(--branch-animation-duration) ease;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.branch-scroll-indicator.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.branch-scroll-indicator:hover {
+  background: var(--chatgpt-bg-secondary);
+  box-shadow: var(--chatgpt-shadow-md);
+}
+
+.branch-scroll-indicator.left {
+  left: 8px;
+}
+
+.branch-scroll-indicator.right {
+  right: 8px;
+}
+
+.branch-scroll-indicator svg {
+  width: 16px;
+  height: 16px;
+  fill: var(--chatgpt-text-secondary);
+}
+
+/* ============================================================================
+   Branch Tabs
+   ============================================================================ */
+
+.branch-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--branch-tab-height);
+  padding: var(--branch-tab-padding);
+  background: var(--chatgpt-bg-secondary);
+  border: 1px solid var(--chatgpt-border-light);
+  border-radius: var(--chatgpt-radius-md);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all var(--branch-animation-duration) ease;
+  position: relative;
+  min-width: 80px;
+  max-width: 200px;
+}
+
+.branch-tab:hover {
+  background: var(--chatgpt-bg-tertiary);
+  border-color: var(--chatgpt-border-medium);
+  box-shadow: var(--chatgpt-shadow-sm);
+}
+
+.branch-tab.active {
+  background: var(--chatgpt-accent-blue);
+  border-color: var(--chatgpt-accent-blue);
+  color: white;
+}
+
+.branch-tab.active:hover {
+  background: var(--chatgpt-accent-blue-hover);
+  border-color: var(--chatgpt-accent-blue-hover);
+}
+
+/* Tab content */
+.branch-tab-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.branch-tab-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.branch-tab.active .branch-tab-icon {
+  opacity: 1;
+}
+
+.branch-tab-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.branch-tab-count {
+  background: var(--chatgpt-bg-primary);
+  color: var(--chatgpt-text-secondary);
+  border-radius: var(--chatgpt-radius-sm);
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.branch-tab.active .branch-tab-count {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* Tab color customization */
+.branch-tab[data-color="blue"] {
+  --tab-color: var(--chatgpt-accent-blue);
+}
+.branch-tab[data-color="green"] {
+  --tab-color: var(--chatgpt-accent-green);
+}
+.branch-tab[data-color="orange"] {
+  --tab-color: var(--chatgpt-accent-orange);
+}
+.branch-tab[data-color="red"] {
+  --tab-color: var(--chatgpt-accent-red);
+}
+
+.branch-tab[data-color]:not(.active) {
+  border-left: 3px solid var(--tab-color);
+}
+
+.branch-tab[data-color].active {
+  background: var(--tab-color);
+  border-color: var(--tab-color);
+}
+
+/* ============================================================================
+   Dropdown Menus
+   ============================================================================ */
+
+.branch-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--chatgpt-bg-primary);
+  border: 1px solid var(--chatgpt-border-light);
+  border-radius: var(--chatgpt-radius-md);
+  box-shadow: var(--chatgpt-shadow-lg);
+  z-index: var(--branch-z-index-dropdown);
+  min-width: 200px;
+  max-width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition: all var(--branch-animation-duration) ease;
+}
+
+.branch-dropdown.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.branch-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--chatgpt-border-light);
+  transition: background-color var(--branch-animation-duration) ease;
+}
+
+.branch-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.branch-dropdown-item:hover {
+  background: var(--chatgpt-bg-secondary);
+}
+
+.branch-dropdown-item-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.branch-dropdown-item-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.branch-dropdown-item-meta {
+  font-size: 11px;
+  color: var(--chatgpt-text-muted);
+}
+
+/* ============================================================================
+   Floating Button
+   ============================================================================ */
+
+.branch-floating-button {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 48px;
+  height: 48px;
+  background: var(--chatgpt-accent-blue);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: var(--branch-z-index-base);
+  box-shadow: var(--chatgpt-shadow-lg);
+  transition: all var(--branch-animation-duration) ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.branch-floating-button:hover {
+  background: var(--chatgpt-accent-blue-hover);
+  transform: scale(1.05);
+  box-shadow: 0 12px 20px -4px rgba(59, 130, 246, 0.4);
+}
+
+.branch-floating-button svg {
+  width: 24px;
+  height: 24px;
+  fill: white;
+}
+
+/* ============================================================================
+   Modal System
+   ============================================================================ */
+
+.branch-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: var(--branch-z-index-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--branch-animation-duration) ease;
+}
+
+.branch-modal-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.branch-modal {
+  background: var(--chatgpt-bg-primary);
+  border-radius: var(--chatgpt-radius-lg);
+  box-shadow: var(--chatgpt-shadow-lg);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  transform: scale(0.95);
+  transition: transform var(--branch-animation-duration) ease;
+}
+
+.branch-modal-overlay.visible .branch-modal {
+  transform: scale(1);
+}
+
+.branch-modal-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--chatgpt-border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.branch-modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--chatgpt-text-primary);
+  margin: 0;
+}
+
+.branch-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--chatgpt-radius-sm);
+  transition: background-color var(--branch-animation-duration) ease;
+}
+
+.branch-modal-close:hover {
+  background: var(--chatgpt-bg-secondary);
+}
+
+.branch-modal-close svg {
+  width: 20px;
+  height: 20px;
+  fill: var(--chatgpt-text-secondary);
+}
+
+.branch-modal-body {
+  padding: 20px 24px;
+}
+
+/* ============================================================================
+   Utility Classes
+   ============================================================================ */
+
+.branch-hidden {
+  display: none !important;
+}
+
+.branch-invisible {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.branch-loading {
+  position: relative;
+  pointer-events: none;
+}
+
+.branch-loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid var(--chatgpt-border-light);
+  border-top-color: var(--chatgpt-accent-blue);
+  border-radius: 50%;
+  animation: branch-spin 1s linear infinite;
+}
+
+@keyframes branch-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================================
+   Responsive Design
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .branch-ui-container {
+    padding: 8px 12px;
+  }
+
+  .branch-tab {
+    min-width: 60px;
+    max-width: 120px;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+
+  .branch-floating-button {
+    width: 44px;
+    height: 44px;
+    top: 16px;
+    right: 16px;
+  }
+
+  .branch-floating-button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .branch-modal {
+    margin: 16px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+  }
+}
+
+/* ============================================================================
+   Integration with ChatGPT UI
+   ============================================================================ */
+
+/* Ensure our UI doesn't interfere with ChatGPT's layout */
+main .chatgpt-branching-extension {
+  margin-bottom: 0;
+}
+
+/* Adjust for ChatGPT's sticky header if present */
+.chatgpt-branching-extension .branch-ui-container {
+  top: var(--chatgpt-header-height, 0);
+}
+
+/* Smooth integration with conversation container */
+[data-testid="conversation-turn"]:first-child {
+  margin-top: 0;
+}
+
+/* Ensure proper stacking context */
+.chatgpt-branching-extension {
+  isolation: isolate;
 }
