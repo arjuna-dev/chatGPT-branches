@@ -244,21 +244,24 @@ async function safelyLoadSavedData() {
         extensionState.conversationId
       );
 
-    if (savedTreeData && extensionState.treeBuilder) {
+    // Only pass valid treeData to importData
+    if (
+      savedTreeData &&
+      typeof savedTreeData === "object" &&
+      extensionState.treeBuilder
+    ) {
       extensionState.treeBuilder.importData(savedTreeData);
       console.log("Loaded saved tree data for conversation");
 
-      // Trigger tab rendering after loading saved data
-      // if (extensionState.tabRenderer) {
-      //   setTimeout(async () => {
-      //     try {
-      //       await renderTabsFromTree();
-      //       console.log("Rendered tabs from loaded tree data");
-      //     } catch (error) {
-      //       console.error("Error rendering tabs from loaded data:", error);
-      //     }
-      //   }, 500);
-      // }
+      // Render tabs after loading tree data
+      if (extensionState.tabRenderer) {
+        try {
+          await renderTabsFromTree();
+          console.log("Rendered tabs from loaded tree data");
+        } catch (error) {
+          console.error("Error rendering tabs from loaded data:", error);
+        }
+      }
     } else {
       console.log("No saved tree data found for conversation");
     }
@@ -1131,101 +1134,360 @@ class SimpleUIManager {
     const container = document.getElementById("tree-visualization");
     if (!container) return;
 
-    // Show loading state
-    container.innerHTML = `
-      <div class="loading-tree-data">
-        <p>Loading comprehensive tree data...</p>
-      </div>
-    `;
+    // One-time style injection for D3 viz
+    if (!document.getElementById("chatgpt-branches-d3-style")) {
+      const style = document.createElement("style");
+      style.id = "chatgpt-branches-d3-style";
+      style.textContent = `
+        .cb-tree-wrapper { position:relative; width:100%; height:100%; min-height:560px; }
+        .cb-tree-svg { font:11px/1.2 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; }
+        .cb-tree-node circle { stroke:#fff; stroke-width:2px; cursor:pointer; }
+        .cb-tree-node circle.user { fill:#34d399; }
+        .cb-tree-node circle.assistant { fill:#4f8ef7; }
+        .cb-tree-node circle.root { fill:#6b7280; }
+        .cb-tree-node circle.inactive { opacity:.45; }
+        .cb-tree-link { fill:none; stroke:rgba(255,255,255,0.2); stroke-width:1.5px; }
+        .cb-tree-link.highlight { stroke:#60a5fa; stroke-width:2px; }
+        .cb-tree-label { pointer-events:none; font-weight:600; fill:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+        .cb-tree-badge { font-size:10px; font-weight:500; fill:#e5e7eb; }
+        .cb-tree-tooltip { position:absolute; pointer-events:none; background:rgba(0,0,0,.85); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px; line-height:1.3; max-width:240px; box-shadow:0 4px 16px rgba(0,0,0,.4); backdrop-filter:blur(6px); }
+        .cb-tree-controls { position:absolute; top:8px; right:8px; display:flex; gap:6px; z-index:10; }
+        .cb-tree-controls button { background:rgba(255,255,255,0.08); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:4px 8px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:4px; }
+        .cb-tree-controls button:hover { background:rgba(255,255,255,0.15); }
+        .cb-tree-legend { position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.55); padding:6px 10px; border:1px solid rgba(255,255,255,0.15); border-radius:8px; display:flex; gap:12px; font-size:11px; color:#e5e7eb; }
+        .cb-tree-legend span { display:flex; align-items:center; gap:4px; }
+        .cb-tree-legend i { display:inline-block; width:12px; height:12px; border-radius:50%; }
+        .cb-tree-legend i.user { background:#34d399; }
+        .cb-tree-legend i.assistant { background:#4f8ef7; }
+        .cb-tree-legend i.inactive { background:#6b7280; opacity:.5; }
+        .cb-tree-header { margin-bottom:12px; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Loading placeholder
+    container.innerHTML = `<div class="loading-tree-data"><p>Loading comprehensive tree data...</p></div>`;
+
+    // Helper: ensure D3 present (CSP-safe: expects bundled local copy)
+    const ensureD3 = () =>
+      new Promise((resolve, reject) => {
+        if (window.d3) return resolve(window.d3);
+        // No remote injection due to host CSP blocking external scripts.
+        reject(new Error("D3 library not found in page context"));
+      });
 
     try {
-      // Get comprehensive tree data (includes all historical nodes)
+      let d3;
+      try {
+        d3 = await ensureD3();
+      } catch (missingErr) {
+        container.innerHTML = `
+          <div class="error-tree-data" style="text-align:left;max-width:640px;margin:0 auto;line-height:1.5">
+            <p style="font-weight:600;margin-bottom:6px;">D3.js not available</p>
+            <p style="margin:4px 0 10px;">Due to the site Content Security Policy, external CDN scripts are blocked. Bundle D3 with the extension instead:</p>
+            <ol style="padding-left:20px;margin:0 0 12px;">
+              <li>Add <code>vendor/d3.v7.min.js</code> to your extension (download from official D3 release).</li>
+              <li>List it in <code>manifest.json</code> before <code>src/content.js</code> under <code>content_scripts[0].js</code>.</li>
+              <li>Reload the extension (chrome://extensions → Reload) and reopen this visualization.</li>
+            </ol>
+            <p style="margin:0 0 12px;">Example manifest snippet:</p>
+            <pre style="white-space:pre;overflow:auto;background:rgba(255,255,255,0.05);padding:8px;border-radius:6px;font-size:11px;">"content_scripts": [{
+  "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+  "js": [
+    "vendor/d3.v7.min.js",
+    "src/utils/dom-utils.js",
+    "src/core/storage-manager.js",
+    "src/core/tree-builder.js",
+    "src/core/branch-detector.js",
+    "src/content.js"
+  ],
+  "css": ["styles/extension.css"],
+  "run_at": "document_idle"
+}]</pre>
+            <button id="cb-retry-d3" style="margin-top:6px;background:#2563eb;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;">Retry</button>
+          </div>`;
+        const retryBtn = container.querySelector("#cb-retry-d3");
+        if (retryBtn)
+          retryBtn.addEventListener("click", () =>
+            this.renderTreeVisualization()
+          );
+        return; // Stop; cannot proceed without D3
+      }
+
       const conversationId = extensionState.conversationId;
       const treeState =
         await extensionState.treeBuilder?.getComprehensiveTreeState(
           conversationId
         );
 
-      console.log("🔧 Comprehensive tree state for visualization:", treeState);
-
       if (!treeState || !treeState.nodes || treeState.nodes.length === 0) {
-        container.innerHTML = `
-          <div class="no-tree-data">
-            <p>No conversation tree data available</p>
-            <p>Navigate through some conversation variants to build the tree</p>
-          </div>
-        `;
+        container.innerHTML = `<div class="no-tree-data"><p>No conversation tree data available</p><p>Navigate through some conversation variants to build the tree</p></div>`;
         return;
       }
 
-      console.log("🔧 Rendering comprehensive tree with data:", {
-        totalNodes: treeState.nodes.length,
-        totalSessions: treeState.totalSessions,
-        isComprehensive: treeState.isComprehensive,
-      });
-
-      // Clear container
+      // Clear
       container.innerHTML = "";
 
-      // Create header with statistics
-      const headerElement = document.createElement("div");
-      headerElement.className = "tree-header";
-      headerElement.innerHTML = `
+      // Header (reuse existing style classes)
+      const header = document.createElement("div");
+      header.className = "tree-header cb-tree-header";
+      header.innerHTML = `
         <div class="tree-stats">
-          <span class="stat-item">
-            <strong>${treeState.nodes.length}</strong> nodes
-          </span>
+          <span class="stat-item"><strong>${
+            treeState.nodes.length
+          }</strong> nodes</span>
           ${
             treeState.totalSessions
-              ? `
-            <span class="stat-item">
-              <strong>${treeState.totalSessions}</strong> sessions
-            </span>
-          `
+              ? `<span class="stat-item"><strong>${treeState.totalSessions}</strong> sessions</span>`
               : ""
           }
           ${
             treeState.isComprehensive
-              ? `
-            <span class="stat-badge comprehensive">Complete History</span>
-          `
-              : `
-            <span class="stat-badge current">Current Session</span>
-          `
+              ? `<span class="stat-badge comprehensive">Complete History</span>`
+              : `<span class="stat-badge current">Current Session</span>`
           }
-        </div>
+        </div>`;
+      container.appendChild(header);
+
+      // Wrapper
+      const wrapper = document.createElement("div");
+      wrapper.className = "cb-tree-wrapper";
+      container.appendChild(wrapper);
+
+      // Tooltip
+      const tooltip = document.createElement("div");
+      tooltip.className = "cb-tree-tooltip";
+      tooltip.style.display = "none";
+      wrapper.appendChild(tooltip);
+
+      // Controls
+      const controls = document.createElement("div");
+      controls.className = "cb-tree-controls";
+      controls.innerHTML = `
+        <button data-action="fit" title="Fit to view">Fit</button>
+        <button data-action="reset" title="Reset zoom">Reset</button>
+        <button data-action="expand" title="Expand / Collapse all">Toggle</button>
       `;
+      wrapper.appendChild(controls);
 
-      // Create tree visualization
-      const treeContainer = document.createElement("div");
-      treeContainer.className = "tree-container";
+      // Legend
+      const legend = document.createElement("div");
+      legend.className = "cb-tree-legend";
+      legend.innerHTML = `
+        <span><i class="user"></i>User</span>
+        <span><i class="assistant"></i>Assistant</span>
+        <span><i class="inactive"></i>Inactive Variant</span>
+      `;
+      wrapper.appendChild(legend);
 
-      // Group nodes by conversation flow for better visualization
-      const groupedNodes = this.groupNodesForVisualization(treeState.nodes);
+      // -----------------------------
+      // TIDY TREE CONSTRUCTION (Observable pattern)
+      // -----------------------------
+      const nodeMap = new Map(treeState.nodes);
+      const edgeMap = new Map(treeState.edges);
+      const rootIds =
+        treeState.rootBranches && treeState.rootBranches.length
+          ? treeState.rootBranches
+          : [treeState.nodes[0][0]];
 
-      // Render grouped nodes
-      for (const group of groupedNodes) {
-        const groupElement = document.createElement("div");
-        groupElement.className = "node-group";
+      const buildSubtree = (id) => {
+        const data = nodeMap.get(id) || { id, role: "unknown" };
+        const children = (edgeMap.get(id) || []).map((childId) =>
+          buildSubtree(childId)
+        );
+        return {
+          id,
+          name: truncateLabel(labelForNode(data)),
+          role: data.role,
+          preview: data.preview,
+          variants: data.variants,
+          totalVariants:
+            data.totalVariants || (data.variants ? data.variants.length : 1),
+          currentVariant: data.currentVariant || 1,
+          children: children.length ? children : undefined,
+        };
+      };
 
-        for (const [nodeId, node] of group) {
-          const nodeElement = this.createTreeNode(node);
-          groupElement.appendChild(nodeElement);
-        }
+      const labelForNode = (n) => {
+        const activeVar =
+          (n.variants || []).find((v) => v.isActive) || (n.variants || [])[0];
+        const base = activeVar?.preview || n.preview || n.role || n.id;
+        return base;
+      };
+      const truncateLabel = (s) =>
+        (s || "").replace(/\s+/g, " ").trim().slice(0, 40) +
+        ((s || "").length > 40 ? "…" : "");
 
-        treeContainer.appendChild(groupElement);
+      // Helper for text label with variant counts (define early so it's hoisted for later usage)
+      function labelWithVariant(d) {
+        const base = d.name || d.role || d.id;
+        if ((d.totalVariants || 1) > 1)
+          return `${base} (${d.currentVariant}/${d.totalVariants})`;
+        return base;
       }
 
-      container.appendChild(headerElement);
-      container.appendChild(treeContainer);
-    } catch (error) {
-      console.error("Error rendering tree visualization:", error);
-      container.innerHTML = `
-        <div class="error-tree-data">
-          <p>Error loading tree data</p>
-          <p>Please try again or check the console for details</p>
-        </div>
-      `;
+      let data;
+      if (rootIds.length === 1) {
+        data = buildSubtree(rootIds[0]);
+      } else {
+        data = {
+          name: "ROOT",
+          role: "root",
+          children: rootIds.map((r) => buildSubtree(r)),
+        };
+      }
+
+      // Build hierarchy *after* data assembled
+      let root = d3.hierarchy(data);
+
+      // Sort for deterministic ordering (role + name)
+      root.sort(
+        (a, b) =>
+          d3.ascending(a.data.role || "", b.data.role || "") ||
+          d3.ascending(a.data.name, b.data.name)
+      );
+
+      const width = Math.max(928, container.clientWidth - 10);
+      const dx = 24; // vertical separation between siblings
+      const dy = 140; // horizontal distance per depth; will override using width/(root.height+1) optional
+      const treeLayout = d3.tree().nodeSize([dx, dy]);
+      treeLayout(root);
+
+      // Compute extents for dynamic height
+      let x0 = Infinity;
+      let x1 = -x0;
+      root.each((d) => {
+        if (d.x > x1) x1 = d.x;
+        if (d.x < x0) x0 = d.x;
+      });
+      const height = x1 - x0 + dx * 2;
+
+      const svg = d3
+        .select(wrapper)
+        .append("svg")
+        .attr("class", "cb-tree-svg")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("viewBox", [-(dy / 3), x0 - dx, width, height])
+        .style("max-width", "100%")
+        .style("height", "auto")
+        .style(
+          "background",
+          "linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))"
+        )
+        .style("border", "1px solid rgba(255,255,255,0.08)")
+        .style("border-radius", "12px");
+
+      // GROUPS
+      const gLinks = svg
+        .append("g")
+        .attr("fill", "none")
+        .attr("stroke", "#555")
+        .attr("stroke-opacity", 0.35)
+        .attr("stroke-width", 1.5);
+      const gNodes = svg
+        .append("g")
+        .attr("stroke-linejoin", "round")
+        .attr("stroke-width", 2);
+
+      // Links
+      gLinks
+        .selectAll("path")
+        .data(root.links())
+        .join("path")
+        .attr("class", "cb-tree-link")
+        .attr(
+          "d",
+          d3
+            .linkHorizontal()
+            .x((d) => d.y)
+            .y((d) => d.x)
+        );
+
+      // Nodes
+      const node = gNodes
+        .selectAll("g")
+        .data(root.descendants())
+        .join("g")
+        .attr("class", (d) => `cb-tree-node depth-${d.depth}`)
+        .attr("transform", (d) => `translate(${d.y},${d.x})`);
+
+      node
+        .append("circle")
+        .attr("r", 10)
+        .attr("class", (d) => {
+          const role = d.data.role || "unknown";
+          const activeVar = (d.data.variants || []).find((v) => v.isActive);
+          const inactive =
+            d.data.variants && d.data.variants.length > 0 && !activeVar;
+          return [role, inactive ? "inactive" : ""].filter(Boolean).join(" ");
+        })
+        .style("cursor", "pointer")
+        .on("click", (event, d) => {
+          event.stopPropagation();
+          const activeVar =
+            (d.data.variants || []).find((v) => v.isActive) ||
+            (d.data.variants || [])[0];
+          if (activeVar)
+            this.navigateToVariantFromTree(
+              { ...d.data, id: d.data.id },
+              activeVar.variantIndex || 1
+            );
+        })
+        .on("mouseenter", (event, d) => {
+          const preview =
+            extensionState.tabRenderer?.getNodePreview(d.data) ||
+            d.data.preview ||
+            d.data.name;
+          tooltip.innerHTML = `<strong>${
+            d.data.role || "Node"
+          }</strong><br>${preview}`;
+          tooltip.style.display = "block";
+          tooltip.style.left = event.pageX + 16 + "px";
+          tooltip.style.top = event.pageY + 16 + "px";
+        })
+        .on("mousemove", (event) => {
+          tooltip.style.left = event.pageX + 16 + "px";
+          tooltip.style.top = event.pageY + 16 + "px";
+        })
+        .on("mouseleave", () => {
+          tooltip.style.display = "none";
+        });
+
+      node
+        .append("text")
+        .attr("class", "cb-tree-label")
+        .attr("dy", "0.31em")
+        .attr("x", (d) => (d.children ? -14 : 14))
+        .attr("text-anchor", (d) => (d.children ? "end" : "start"))
+        .text((d) => labelWithVariant(d.data))
+        .attr("stroke", "rgba(0,0,0,0.55)")
+        .attr("paint-order", "stroke");
+
+      // Controls repurposed
+      const refit = () => {
+        // For tidy tree static layout, refit just recenters horizontally using current viewBox
+        // Could add zoom behavior later
+        svg.attr("viewBox", [-(dy / 3), x0 - dx, width, height]);
+      };
+      controls
+        .querySelector('[data-action="fit"]')
+        .addEventListener("click", refit);
+      controls
+        .querySelector('[data-action="reset"]')
+        .addEventListener("click", refit);
+      controls
+        .querySelector('[data-action="expand"]')
+        .addEventListener("click", () => {
+          // Not implementing collapse for tidy version yet; could rebuild with _collapsed markers
+          refit();
+        });
+      refit();
+    } catch (err) {
+      console.error("Error rendering D3 tree visualization", err);
+      container.innerHTML = `<div class="error-tree-data"><p>Error loading tree visualization</p><p>${
+        (err && err.message) || "Unknown error"
+      }</p></div>`;
     }
   }
 
