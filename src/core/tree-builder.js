@@ -281,30 +281,34 @@ class TreeBuilder {
     let prevTurnVariantNodes = [];
     let prevTurnMeta = null;
 
-    const safeText = (s) => (s || "").replace(/\s+/g, " ").trim();
+  const hasUsableLabel = (s) => !!s && s.trim().length > 0;
 
     for (let i = 0; i < turns.length; i++) {
       const t = turns[i];
       const variants = t.variants || [];
       if (!variants.length) continue;
       const variantNodes = variants.map((v) => {
-        const text = safeText(v.userPrompt || v.preview || v.id);
-        const idBase = text || v.id;
-        // Ensure uniqueness by appending deterministic suffix if collision
-        let candidate = idBase;
+        const raw = v.userPrompt || v.preview || "";
+        const label = hasUsableLabel(raw) ? raw.trim().replace(/\s+/g, " ") : null;
+        // Internal base id: prefer variantId for stability, fallback to turnIndex-variantIndex
+        let baseId = v.id || `${t.turnIndex}_${v.variantIndex}`;
+        let candidate = baseId;
         let n = 1;
         while (leanNodes.has(candidate)) {
+          if (leanNodes.get(candidate)?.variantId === v.id) break; // same variant
           n += 1;
-          candidate = idBase + "#" + n;
+          candidate = baseId + "#" + n;
         }
         const node = {
-          id: candidate, // user prompt derived unique id
-          role: t.role,
-          text,
+          id: candidate,
+          role: 'user',
+          // text keeps internal numeric variant marker for debugging
+          text: String(v.variantIndex),
+          label, // user-facing label (may be null -> display '-')
           turnIndex: t.turnIndex,
           variantIndex: v.variantIndex,
-          turnId: t.turnId, // original turn identifier (for navigation)
-          variantId: v.id, // original variant id if needed
+          turnId: t.turnId,
+          variantId: v.id,
           children: [],
         };
         leanNodes.set(candidate, node);

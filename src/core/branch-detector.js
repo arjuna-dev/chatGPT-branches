@@ -134,9 +134,7 @@ class BranchDetector {
         variantIndex: i,
         totalVariants: variantInfo.total,
         role: role,
-        preview: isCurrentVariant
-          ? currentPreview
-          : `${role} message (variant ${i})`,
+        preview: isCurrentVariant ? currentPreview : i,
         textHash: isCurrentVariant ? currentTextHash : null, // Will be filled when navigated to
         isActive: isCurrentVariant,
         isDiscovered: isCurrentVariant, // Only current variant is discovered initially
