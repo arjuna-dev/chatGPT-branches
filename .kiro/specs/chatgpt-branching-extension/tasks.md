@@ -14,7 +14,7 @@
   - Write functions to identify conversation container and set up DOM observation targets
   - _Requirements: 8.3, 8.6, 5.6_
 
-- [-] 3. Build branch detection core functionality
+- [x] 3. Build branch detection core functionality
 
   - Implement variant indicator detection using .tabular-nums selector with /^\d+\/\d+$/ pattern
   - Create functions to verify presence of Previous/Next response buttons using aria-label selectors
@@ -126,7 +126,27 @@
   - Add performance tests to verify extension doesn't slow ChatGPT interface
   - _Requirements: 7.1, 7.3, 7.4_
 
-- [ ] 17. Integrate all components and test end-to-end workflows
+- [x] 17. Refactor monolithic content.js into modular architecture
+
+  - Extract DOM utilities into src/utils/dom-utils.js module
+  - Extract StorageManager class into src/core/storage-manager.js module
+  - Extract TreeBuilder class into src/core/tree-builder.js module
+  - Extract BranchDetector class into src/core/branch-detector.js module
+  - Create modular main content.js that imports and coordinates all modules
+  - Update manifest.json to support ES6 modules with "type": "module"
+  - _Requirements: Code maintainability and organization_
+
+- [ ] 18. Complete remaining module extractions
+
+  - Extract DOMObserver class into src/core/dom-observer.js module
+  - Extract TabRenderer class into src/core/tab-renderer.js module
+  - Extract NavigationController class into src/core/navigation-controller.js module
+  - Extract UIManager class into src/core/ui-manager.js module
+  - Extract PerformanceMonitor class into src/utils/performance-monitor.js module
+  - Update main content.js to import and use all extracted modules
+  - _Requirements: Complete modular architecture_
+
+- [ ] 19. Integrate all components and test end-to-end workflows
   - Connect DOM observer, branch detector, UI manager, and storage components
   - Test complete user workflows from branch creation to navigation
   - Verify persistence across page reloads and browser sessions
