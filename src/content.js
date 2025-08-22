@@ -1059,8 +1059,8 @@ class SimpleUIManager {
         .cb-tree-wrapper { position:relative; width:100%; height:100%; min-height:560px; }
         .cb-tree-svg { font:11px/1.2 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; }
         .cb-tree-node circle { stroke:#fff; stroke-width:2px; cursor:pointer; }
-        .cb-tree-node circle.user { fill:#4f8ef7; }
-        .cb-tree-node circle.assistant { fill:#34d399; }
+        .cb-tree-node circle.user { fill:#34d399; }
+        .cb-tree-node circle.assistant { fill:#4f8ef7; }
         .cb-tree-node circle.root { fill:#6b7280; }
         .cb-tree-node circle.inactive { opacity:.45; }
         .cb-tree-link { fill:none; stroke:rgba(255,255,255,0.2); stroke-width:1.5px; }
@@ -1222,7 +1222,7 @@ class SimpleUIManager {
           return {
             id: n.id,
             role: n.role,
-            name: n.label || "-",
+            name: (n.text || n.id).slice(0, 80),
             turnIndex: n.turnIndex,
             variantIndex: n.variantIndex,
             turnId: n.turnId,
@@ -1664,7 +1664,8 @@ class SimpleTabRenderer {
       if (
         activeVariant &&
         activeVariant.preview &&
-        activeVariant.preview !== activeVariant.variantIndex
+        activeVariant.preview !==
+          `${node.role} message (variant ${activeVariant.variantIndex})`
       ) {
         return activeVariant.preview;
       }

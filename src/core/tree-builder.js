@@ -239,6 +239,13 @@ class TreeBuilder {
       (branch) => branch.baseTurnId || branch.turnId
     );
 
+    // Build lean structure before scheduling save so it persists correctly
+    try {
+      this.buildLeanStructure(branches);
+    } catch (e) {
+      console.warn("Failed to build lean structure:", e);
+    }
+
     // Save to comprehensive storage (async, non-blocking)
     if (
       typeof extensionState !== "undefined" &&
@@ -253,15 +260,8 @@ class TreeBuilder {
       }, 0);
     }
 
-    // Notify callbacks
+    // Notify callbacks AFTER lean build
     this.notifyTreeUpdated();
-
-    // Build lean structure too
-    try {
-      this.buildLeanStructure(branches);
-    } catch (e) {
-      console.warn("Failed to build lean structure:", e);
-    }
   }
 
   /**
@@ -281,44 +281,70 @@ class TreeBuilder {
     let prevTurnVariantNodes = [];
     let prevTurnMeta = null;
 
-  const hasUsableLabel = (s) => !!s && s.trim().length > 0;
+    const safeText = (s) => {
+      if (s == null) return "";
+      if (typeof s === "string") return s.replace(/\s+/g, " ").trim();
+      if (Array.isArray(s))
+        return s
+          .map((x) => safeText(x))
+          .join(" ")
+          .trim();
+      if (typeof s === "object") {
+        if (typeof s.text === "string") return safeText(s.text);
+        try {
+          return JSON.stringify(s).replace(/\s+/g, " ").trim();
+        } catch (e) {
+          return String(s).replace(/\s+/g, " ").trim();
+        }
+      }
+      return String(s).replace(/\s+/g, " ").trim();
+    };
 
     for (let i = 0; i < turns.length; i++) {
       const t = turns[i];
       const variants = t.variants || [];
       if (!variants.length) continue;
-      const variantNodes = variants.map((v) => {
-        const raw = v.userPrompt || v.preview || "";
-        const label = hasUsableLabel(raw) ? raw.trim().replace(/\s+/g, " ") : null;
-        // Internal base id: prefer variantId for stability, fallback to turnIndex-variantIndex
-        let baseId = v.id || `${t.turnIndex}_${v.variantIndex}`;
-        let candidate = baseId;
-        let n = 1;
-        while (leanNodes.has(candidate)) {
-          if (leanNodes.get(candidate)?.variantId === v.id) break; // same variant
-          n += 1;
-          candidate = baseId + "#" + n;
-        }
-        const node = {
-          id: candidate,
-          role: 'user',
-          // text keeps internal numeric variant marker for debugging
-          text: String(v.variantIndex),
-          label, // user-facing label (may be null -> display '-')
-          turnIndex: t.turnIndex,
-          variantIndex: v.variantIndex,
-          turnId: t.turnId,
-          variantId: v.id,
-          children: [],
-        };
-        leanNodes.set(candidate, node);
-        return node;
-      });
+      const variantNodes = variants
+        .filter((v) => v)
+        .map((v) => {
+          const rawLabel = v.userPrompt || v.preview || v.id || v.variantId;
+          const text = safeText(rawLabel);
+          const idBase = text || String(v.id || v.variantId || Math.random());
+          // Ensure uniqueness by appending deterministic suffix if collision
+          let candidate = idBase;
+          let n = 1;
+          while (leanNodes.has(candidate)) {
+            // If the existing node matches the same turn + variant index, reuse it
+            const existing = leanNodes.get(candidate);
+            if (
+              existing &&
+              existing.turnIndex === t.turnIndex &&
+              existing.variantIndex === v.variantIndex &&
+              existing.turnId === t.turnId
+            ) {
+              return existing;
+            }
+            n += 1;
+            candidate = idBase + "#" + n;
+          }
+          const node = {
+            id: candidate, // user prompt derived unique id
+            role: t.role,
+            text,
+            turnIndex: t.turnIndex,
+            variantIndex: v.variantIndex,
+            turnId: t.turnId, // original turn identifier (for navigation)
+            variantId: v.id, // original variant id if needed
+            children: [],
+          };
+          leanNodes.set(candidate, node);
+          return node;
+        });
       if (i === 0 || prevTurnVariantNodes.length === 0) {
         // First turn variants become root children
         for (const vn of variantNodes) {
           vn.parentId = root.id;
-          root.children.push(vn.id);
+          if (!root.children.includes(vn.id)) root.children.push(vn.id);
         }
       } else {
         // Choose a single parent (active variant of previous turn if available, else first)
@@ -330,9 +356,11 @@ class TreeBuilder {
         }
         if (!parentNode) parentNode = prevTurnVariantNodes[0];
         if (parentNode) {
-          parentNode.children.push(...variantNodes.map((n) => n.id));
           for (const vn of variantNodes) {
             vn.parentId = parentNode.id;
+            if (!parentNode.children.includes(vn.id)) {
+              parentNode.children.push(vn.id);
+            }
           }
         }
       }
