@@ -20,7 +20,6 @@ function extractConversationId() {
   for (const pattern of patterns) {
     const match = url.match(pattern);
     if (match && match[1]) {
-      console.log("Extracted conversation ID:", match[1]);
       return match[1];
     }
   }
@@ -53,7 +52,6 @@ function findConversationContainer() {
     try {
       const container = document.querySelector(selector);
       if (container) {
-        console.log("Found conversation container with selector:", selector);
         return container;
       }
     } catch (error) {
@@ -62,17 +60,6 @@ function findConversationContainer() {
   }
 
   console.warn("Could not find conversation container");
-
-  // Debug: log available containers
-  console.log(
-    "Available main elements:",
-    document.querySelectorAll("main").length
-  );
-  console.log(
-    "Available role=main elements:",
-    document.querySelectorAll('[role="main"]').length
-  );
-
   return null;
 }
 
@@ -106,7 +93,6 @@ function findConversationTurns() {
     try {
       turns = Array.from(document.querySelectorAll(selector));
       if (turns.length > 0) {
-        console.log(`Found ${turns.length} turns with selector:`, selector);
         break;
       }
     } catch (error) {
@@ -128,10 +114,6 @@ function findConversationTurns() {
       );
       // Debug: Log some information about the page structure
       debugPageStructure();
-    } else {
-      console.log(
-        `Found ${turns.length} turns using branch indicator fallback`
-      );
     }
   }
 
@@ -225,24 +207,10 @@ function isLikelyTurnContainer(element) {
  * Debug function to help identify the page structure
  */
 function debugPageStructure() {
-  console.log("=== DEBUG: Page Structure Analysis ===");
-
   const main = document.querySelector("main");
   if (main) {
-    console.log("Found main element:", main);
-    console.log("Main children count:", main.children.length);
-
     // Log first few children of main
-    Array.from(main.children)
-      .slice(0, 5)
-      .forEach((child, index) => {
-        console.log(`Main child ${index}:`, {
-          tagName: child.tagName,
-          className: child.className,
-          id: child.id,
-          dataAttributes: getDataAttributes(child),
-        });
-      });
+    Array.from(main.children).slice(0, 5);
   }
 
   // Look for elements that might contain conversation content
@@ -257,27 +225,13 @@ function debugPageStructure() {
 
   possibleContainers.forEach((selector) => {
     const elements = document.querySelectorAll(selector);
-    if (elements.length > 0) {
-      console.log(
-        `Found ${elements.length} elements with selector "${selector}"`
-      );
-    }
   });
 
   // Look for elements with tabular-nums (our branch indicators)
   const tabularNums = document.querySelectorAll(".tabular-nums");
   if (tabularNums.length > 0) {
-    console.log(`Found ${tabularNums.length} .tabular-nums elements`);
-    tabularNums.forEach((el, index) => {
-      console.log(`tabular-nums ${index}:`, {
-        text: el.textContent,
-        parent: el.parentElement?.tagName,
-        parentClass: el.parentElement?.className,
-      });
-    });
+    tabularNums.forEach((el, index) => {});
   }
-
-  console.log("=== END DEBUG ===");
 }
 
 /**
@@ -313,7 +267,6 @@ function generateTurnId(turnElement, index) {
   for (const attr of stableAttributes) {
     const value = turnElement.getAttribute(attr);
     if (value) {
-      console.log(`Using stable ID from ${attr}:`, value);
       return value;
     }
   }
@@ -325,7 +278,6 @@ function generateTurnId(turnElement, index) {
   const pathHash = simpleHash(domPath);
 
   const syntheticId = `turn-${index}-${contentHash}-${pathHash}`;
-  console.log("Generated synthetic turn ID:", syntheticId);
   return syntheticId;
 }
 
@@ -505,15 +457,6 @@ function isValidChatGPTPage() {
   const hasConversationContainer = findConversationContainer() !== null;
 
   const isValid = isValidHost && hasConversationId && hasConversationContainer;
-
-  console.log("Page validation:", {
-    url,
-    hostname,
-    isValidHost,
-    hasConversationId,
-    hasConversationContainer,
-    isValid,
-  });
 
   return isValid;
 }

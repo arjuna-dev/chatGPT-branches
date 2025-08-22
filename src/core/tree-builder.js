@@ -5,7 +5,6 @@
 class TreeBuilder {
   constructor() {
     this.nodes = new Map(); // nodeId -> BranchNode
-    this.edges = new Map(); // parentId -> [childId1, childId2, ...]
     this.currentPath = []; // [nodeId1, nodeId2, ...] - active conversation path
     this.rootBranches = []; // [nodeId1, nodeId2, ...] - top-level branch points
   }
@@ -33,7 +32,6 @@ class TreeBuilder {
     };
 
     this.nodes.set(nodeId, treeNode);
-    console.log("Added node to tree:", nodeId);
 
     return nodeId;
   }
@@ -44,16 +42,6 @@ class TreeBuilder {
    * @param {string} childId - Child node ID
    */
   linkNodes(parentId, childId) {
-    // Add to edges map
-    if (!this.edges.has(parentId)) {
-      this.edges.set(parentId, []);
-    }
-
-    const children = this.edges.get(parentId);
-    if (!children.includes(childId)) {
-      children.push(childId);
-    }
-
     // Update node relationships
     const parentNode = this.nodes.get(parentId);
     const childNode = this.nodes.get(childId);
@@ -65,8 +53,6 @@ class TreeBuilder {
       childNode.parent = parentId;
       childNode.depth = parentNode.depth + 1;
     }
-
-    console.log(`Linked nodes: ${parentId} -> ${childId}`);
   }
 
   /**
@@ -76,7 +62,6 @@ class TreeBuilder {
   updateCurrentPath(path) {
     const oldPath = [...this.currentPath];
     this.currentPath = [...path];
-    console.log("Updated current path:", this.currentPath);
 
     // Notify callbacks
     this.notifyPathChanged(this.currentPath, oldPath);
@@ -154,19 +139,8 @@ class TreeBuilder {
     }
 
     this.rootBranches = rootBranches;
-    console.log("Found root branches:", this.rootBranches);
     return this.rootBranches;
   }
-
-  /**
-   * Get sub-branches (children) for a given node
-   * @param {string} nodeId - Parent node ID
-   * @returns {string[]} Array of child node IDs
-   */
-  getSubBranches(nodeId) {
-    return this.edges.get(nodeId) || [];
-  }
-
   /**
    * Get all variants of a specific turn (siblings in the tree)
    * @param {string} nodeId - Node ID to find siblings for
@@ -253,8 +227,6 @@ class TreeBuilder {
    * @param {Object[]} branches - Array of branch data from BranchDetector
    */
   buildFromBranches(branches) {
-    console.log("Building conversation tree from branches:", branches);
-
     // Clear existing tree
     this.clear();
 
@@ -268,10 +240,6 @@ class TreeBuilder {
     this.rootBranches = branches.map(
       (branch) => branch.baseTurnId || branch.turnId
     );
-
-    console.log("🔧 NEW TREE LOGIC: Each branch is now a root node");
-    console.log("🔧 Root branches:", this.rootBranches);
-    console.log("Conversation tree built successfully:", this.getTreeSummary());
 
     // Save to comprehensive storage (async, non-blocking)
     if (
@@ -289,6 +257,82 @@ class TreeBuilder {
 
     // Notify callbacks
     this.notifyTreeUpdated();
+
+    // Build lean structure too
+    try {
+      this.buildLeanStructure(branches);
+    } catch (e) {
+      console.warn("Failed to build lean structure:", e);
+    }
+  }
+
+  /**
+   * Build a lean in-memory structure: variant-only chain.
+   * Schema:
+   *   this.lean = {
+   *     root: { id: 'ROOT', children: [variantNodeIds] },
+   *     nodes: Map<id, { id, role, text, turnIndex, variantIndex, children: [] }>
+   *   }
+   * Each turn's variants become sibling nodes. Children of the active variant of a turn
+   * are the variants of the next turn (forming a chain). No duplicate heavy fields.
+   */
+  buildLeanStructure(branches) {
+    const turns = this.groupBranchesByTurn(branches || []);
+    const leanNodes = new Map();
+    const root = { id: "ROOT", children: [] };
+    let prevActiveVariantNode = null;
+
+    const safeText = (s) => (s || "").replace(/\s+/g, " ").trim();
+
+    for (let i = 0; i < turns.length; i++) {
+      const t = turns[i];
+      const variants = t.variants || [];
+      if (!variants.length) continue;
+      const variantNodes = variants.map((v) => {
+        const text = safeText(v.userPrompt || v.preview || v.id);
+        const idBase = text || v.id;
+        // Ensure uniqueness by appending deterministic suffix if collision
+        let candidate = idBase;
+        let n = 1;
+        while (leanNodes.has(candidate)) {
+          n += 1;
+          candidate = idBase + "#" + n;
+        }
+        const node = {
+          id: candidate,
+          role: t.role,
+          text,
+          turnIndex: t.turnIndex,
+          variantIndex: v.variantIndex,
+          children: [],
+        };
+        leanNodes.set(candidate, node);
+        return node;
+      });
+      if (i === 0 || !prevActiveVariantNode) {
+        root.children.push(...variantNodes.map((n) => n.id));
+      } else {
+        prevActiveVariantNode.children.push(...variantNodes.map((n) => n.id));
+      }
+      prevActiveVariantNode =
+        variantNodes.find((vn) => {
+          const original = (t.variants || []).find(
+            (ov) => ov.variantIndex === vn.variantIndex
+          );
+          return original && original.isActive;
+        }) || variantNodes[0];
+    }
+
+    this.lean = { root, nodes: leanNodes };
+  }
+
+  /** Return lean tree snapshot */
+  getLeanTree() {
+    if (!this.lean) return null;
+    return {
+      root: { ...this.lean.root },
+      nodes: Array.from(this.lean.nodes.values()).map((n) => ({ ...n })),
+    };
   }
 
   /**
@@ -370,7 +414,6 @@ class TreeBuilder {
     };
 
     this.nodes.set(nodeId, branchNode);
-    console.log("Added branch as root node:", nodeId);
   }
 
   /**
@@ -504,7 +547,6 @@ class TreeBuilder {
     };
 
     this.nodes.set(turnId, turnNode);
-    console.log("Added conversation turn:", turnId);
   }
 
   /**
@@ -535,7 +577,6 @@ class TreeBuilder {
     }
 
     this.rootBranches = rootTurns; // Keep same property name for compatibility
-    console.log("Found root turns:", rootTurns);
     return rootTurns;
   }
 
@@ -557,7 +598,6 @@ class TreeBuilder {
     };
 
     this.nodes.set(nodeId, treeNode);
-    console.log("Added variant node to tree:", nodeId);
 
     return nodeId;
   }
@@ -573,7 +613,6 @@ class TreeBuilder {
     if (existingNode) {
       // Update existing node
       Object.assign(existingNode, updatedBranch);
-      console.log("Updated existing node:", nodeId);
 
       // Notify callbacks
       this.notifyTreeUpdated();
@@ -602,8 +641,6 @@ class TreeBuilder {
       // Re-identify root branches
       this.findRootBranches();
 
-      console.log("Added new node to tree:", nodeId);
-
       // Notify callbacks
       this.notifyTreeUpdated();
     }
@@ -614,10 +651,8 @@ class TreeBuilder {
    */
   clear() {
     this.nodes.clear();
-    this.edges.clear();
     this.currentPath = [];
     this.rootBranches = [];
-    console.log("Tree cleared");
   }
 
   /**
@@ -627,11 +662,9 @@ class TreeBuilder {
   getTreeSummary() {
     return {
       nodeCount: this.nodes.size,
-      edgeCount: this.edges.size,
       rootBranches: this.rootBranches.length,
       currentPathLength: this.currentPath.length,
       nodes: Array.from(this.nodes.keys()),
-      edges: Object.fromEntries(this.edges),
     };
   }
 
@@ -640,27 +673,15 @@ class TreeBuilder {
    * @returns {Object} Serializable tree data
    */
   exportData() {
-    // Ensure all nodes have their branches property properly set
-    const nodesWithBranches = new Map();
-    for (const [nodeId, node] of this.nodes) {
-      const nodeWithBranches = {
-        ...node,
-        // Ensure branches property exists and is properly structured
-        branches:
-          node.branches ||
-          (node.variants
-            ? this.createBranchesFromVariants(node.variants, node)
-            : []),
-      };
-      nodesWithBranches.set(nodeId, nodeWithBranches);
-    }
+    // Legacy heavy export retained only if needed; prefer lean
+    const lean = this.getLeanTree();
+    if (lean) return { version: "lean-1", lean };
+    return { version: "lean-1", lean: null };
+  }
 
-    return {
-      nodes: Object.fromEntries(nodesWithBranches),
-      edges: Object.fromEntries(this.edges),
-      currentPath: this.currentPath,
-      rootBranches: this.rootBranches,
-    };
+  /** Export only lean minimal structure explicitly */
+  exportLean() {
+    return this.getLeanTree();
   }
 
   /**
@@ -670,11 +691,9 @@ class TreeBuilder {
   getTreeState() {
     return {
       nodeCount: this.nodes.size,
-      edgeCount: this.edges.size,
       rootBranches: this.rootBranches,
       currentPath: this.currentPath,
       nodes: Array.from(this.nodes.entries()),
-      edges: Array.from(this.edges.entries()),
     };
   }
 
@@ -692,10 +711,6 @@ class TreeBuilder {
         );
 
       if (!storedTree) {
-        // No stored data, return current tree state
-        console.log(
-          "No comprehensive tree data found, returning current state"
-        );
         return this.getTreeState();
       }
 
@@ -729,14 +744,6 @@ class TreeBuilder {
         }
       }
 
-      // Merge edges
-      const mergedEdges = new Map(storedTree.edges);
-      for (const [parentId, children] of currentState.edges) {
-        const existingChildren = mergedEdges.get(parentId) || [];
-        const mergedChildren = [...new Set([...existingChildren, ...children])];
-        mergedEdges.set(parentId, mergedChildren);
-      }
-
       // Merge root branches
       const mergedRootBranches = [
         ...new Set([...storedTree.rootBranches, ...currentState.rootBranches]),
@@ -744,11 +751,9 @@ class TreeBuilder {
 
       return {
         nodeCount: mergedNodes.size,
-        edgeCount: mergedEdges.size,
         rootBranches: mergedRootBranches,
         currentPath: currentState.currentPath,
         nodes: Array.from(mergedNodes.entries()),
-        edges: Array.from(mergedEdges.entries()),
         isComprehensive: true,
         totalSessions: storedTree.totalSessions || 1,
         lastUpdated: storedTree.lastUpdated || Date.now(),
@@ -778,7 +783,6 @@ class TreeBuilder {
       );
 
       if (success) {
-        console.log("Successfully saved tree to comprehensive storage");
       } else {
         console.error("Failed to save tree to comprehensive storage");
       }
@@ -853,7 +857,6 @@ class TreeBuilder {
    * @param {Object} data - Tree data to import
    */
   importData(data) {
-    console.log("Importing tree data:", data);
     this.clear();
 
     try {
@@ -871,28 +874,17 @@ class TreeBuilder {
           nodesMap.set(nodeId, nodeData);
         }
         this.nodes = nodesMap;
-        console.log(`Imported ${this.nodes.size} nodes with branches`);
-      }
-
-      // Handle edges - data.edges is already an array of [key, value] pairs
-      if (Array.isArray(data.edges)) {
-        this.edges = new Map(data.edges);
-        console.log(`Imported ${this.edges.size} edges`);
       }
 
       // Handle current path
       if (Array.isArray(data.currentPath)) {
         this.currentPath = [...data.currentPath];
-        console.log(`Imported current path:`, this.currentPath);
       }
 
       // Handle root branches
       if (Array.isArray(data.rootBranches)) {
         this.rootBranches = [...data.rootBranches];
-        console.log(`Imported ${this.rootBranches.length} root branches`);
       }
-
-      console.log("Successfully imported tree data:", this.getTreeSummary());
 
       // Notify that tree was updated
       this.notifyTreeUpdated();

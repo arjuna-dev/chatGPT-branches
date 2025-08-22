@@ -3,8 +3,6 @@
  * Main entry point for the extension functionality
  */
 
-console.log("ChatGPT Branching Extension loaded");
-
 // All modules are loaded via manifest.json in order:
 // 1. dom-utils.js (provides utility functions)
 // 2. storage-manager.js (provides StorageManager class)
@@ -64,8 +62,6 @@ async function safeInitializeExtension() {
  * Wait for React to stabilize before initializing extension
  */
 async function waitForReactStability() {
-  console.log("Waiting for React to stabilize...");
-
   // Wait for main element to exist
   await waitForElement("main", 10000);
 
@@ -93,13 +89,9 @@ async function waitForReactStability() {
 
   // Additional safety delay
   await new Promise((resolve) => setTimeout(resolve, 1000));
-
-  console.log("React appears stable, proceeding with extension initialization");
 }
 
 async function initializeExtension() {
-  console.log("Initializing ChatGPT Branching Extension...");
-
   try {
     // Wrap all DOM operations in try-catch to prevent React conflicts
     const initResult = await safelyInitializeComponents();
@@ -107,8 +99,6 @@ async function initializeExtension() {
     if (!initResult.success) {
       throw new Error(`Initialization failed: ${initResult.error}`);
     }
-
-    console.log("Extension initialization completed successfully");
   } catch (error) {
     console.error("Error initializing ChatGPT Branching Extension:", error);
 
@@ -120,9 +110,6 @@ async function initializeExtension() {
     window.extensionRetryCount = (window.extensionRetryCount || 0) + 1;
 
     if (window.extensionRetryCount < 5) {
-      console.log(
-        `Retrying initialization in ${retryDelay}ms (attempt ${window.extensionRetryCount})`
-      );
       setTimeout(safeInitializeExtension, retryDelay);
     } else {
       console.error(
@@ -139,9 +126,6 @@ async function safelyInitializeComponents() {
   try {
     // Check if we're on a valid ChatGPT conversation page
     if (!isValidChatGPTPage()) {
-      console.log(
-        "Not a valid ChatGPT conversation page, extension not activated"
-      );
       return { success: false, error: "Invalid page" };
     }
 
@@ -153,11 +137,6 @@ async function safelyInitializeComponents() {
       );
       return { success: false, error: "No conversation ID" };
     }
-
-    console.log(
-      "Initializing extension for conversation:",
-      extensionState.conversationId
-    );
 
     // Initialize core components
     extensionState.storageManager = new StorageManager();
@@ -185,7 +164,6 @@ async function safelyInitializeComponents() {
     setupDOMObserver();
 
     extensionState.isInitialized = true;
-    console.log("All extension components initialized successfully");
 
     return { success: true };
   } catch (error) {
@@ -216,8 +194,6 @@ function setupComponentCallbacks() {
 
   // Branch detector callbacks
   extensionState.branchDetector.onBranchDetected((branchInfo) => {
-    console.log("Branch detected:", branchInfo);
-
     // Update tree with detected branch
     if (extensionState.treeBuilder) {
       extensionState.treeBuilder.buildFromBranches([branchInfo]);
@@ -234,11 +210,6 @@ async function safelyLoadSavedData() {
   }
 
   try {
-    console.log(
-      "Loading saved tree data for conversation:",
-      extensionState.conversationId
-    );
-
     const savedTreeData =
       await extensionState.storageManager.loadConversationTree(
         extensionState.conversationId
@@ -251,19 +222,16 @@ async function safelyLoadSavedData() {
       extensionState.treeBuilder
     ) {
       extensionState.treeBuilder.importData(savedTreeData);
-      console.log("Loaded saved tree data for conversation");
 
       // Render tabs after loading tree data
       if (extensionState.tabRenderer) {
         try {
           await renderTabsFromTree();
-          console.log("Rendered tabs from loaded tree data");
         } catch (error) {
           console.error("Error rendering tabs from loaded data:", error);
         }
       }
     } else {
-      console.log("No saved tree data found for conversation");
     }
   } catch (error) {
     console.error("Failed to load saved tree data:", error);
@@ -275,44 +243,20 @@ async function safelyLoadSavedData() {
  */
 async function performInitialScan() {
   try {
-    console.log("🔧 Performing initial branch scan...");
-
     const turns = findConversationTurns();
-    console.log(`🔧 Found ${turns.length} conversation turns`);
-
     if (turns.length === 0) {
-      console.log("🔧 No conversation turns found for initial scan");
       // Debug: try to understand the page structure
-      console.log("🔧 Debugging page structure...");
       debugPageStructure();
       return;
     }
 
-    // Log details about each turn
-    turns.forEach((turn, index) => {
-      console.log(`🔧 Turn ${index}:`, {
-        tagName: turn.tagName,
-        className: turn.className,
-        hasTabularNums: !!turn.querySelector(".tabular-nums"),
-        tabularNumsText: turn.querySelector(".tabular-nums")?.textContent,
-        textPreview: turn.textContent?.substring(0, 100) + "...",
-      });
-    });
-
     const detectedBranches =
       extensionState.branchDetector.detectBranches(turns);
-    console.log(`🔧 Detected branches:`, detectedBranches);
 
     if (detectedBranches.length > 0) {
-      console.log(
-        `🔧 Initial scan detected ${detectedBranches.length} branches`
-      );
       extensionState.treeBuilder.buildFromBranches(detectedBranches);
     } else {
-      console.log("🔧 No branches detected in initial scan");
-
       // Create a fallback display showing all turns
-      console.log("🔧 Creating fallback display for all turns");
       const fallbackBranches = turns.map((turn, index) => {
         const preview = turn.textContent?.substring(0, 80) + "..." || "Message";
         const variants = [
@@ -339,14 +283,12 @@ async function performInitialScan() {
       });
 
       if (fallbackBranches.length > 0) {
-        console.log("🔧 Using fallback branches:", fallbackBranches);
         extensionState.treeBuilder.buildFromBranches(fallbackBranches);
       }
     }
 
     // Save to comprehensive storage after building tree
     if (extensionState.conversationId && extensionState.treeBuilder) {
-      console.log("🔧 Saving tree to comprehensive storage...");
       await extensionState.treeBuilder.saveToComprehensiveStorage(
         extensionState.conversationId
       );
@@ -358,29 +300,13 @@ async function performInitialScan() {
 
 // Export for debugging
 window.extensionState = extensionState;
-window.debugExtension = () => {
-  console.log("=== EXTENSION DEBUG ===");
-  console.log("Extension State:", extensionState);
-  console.log("Tree Summary:", extensionState.treeBuilder?.getTreeSummary());
-  console.log("Tree State:", extensionState.treeBuilder?.getTreeState());
-  console.log("All Nodes:", extensionState.treeBuilder?.getAllNodes());
-  console.log("Root Branches:", extensionState.treeBuilder?.rootBranches);
-  console.log(
-    "Detected Branches:",
-    extensionState.branchDetector?.getAllBranches()
-  );
-  console.log("=== END DEBUG ===");
-};
 
 // Add manual rescan function
 window.rescanBranches = async () => {
-  console.log("🔧 Manual rescan triggered");
   if (extensionState.branchDetector && extensionState.treeBuilder) {
     const turns = findConversationTurns();
-    console.log("🔧 Found turns for rescan:", turns.length);
     const detectedBranches =
       extensionState.branchDetector.detectBranches(turns);
-    console.log("🔧 Detected branches in rescan:", detectedBranches);
     if (detectedBranches.length > 0) {
       extensionState.treeBuilder.buildFromBranches(detectedBranches);
     }
@@ -389,12 +315,10 @@ window.rescanBranches = async () => {
 
 // Add manual UI refresh
 window.refreshUI = async () => {
-  console.log("🔧 Manual UI refresh triggered");
   await renderTabsFromTree();
 };
 
 // Add immediate debug logging
-console.log("🔧 NEW MODULAR CONTENT.JS LOADED - Version 2.0");
 
 // ============================================================================
 // TEMPORARY INLINE UI COMPONENTS (until properly extracted)
@@ -408,8 +332,6 @@ class SimpleUIManager {
   }
 
   async initialize() {
-    console.log("🔧 Initializing Simple UI Manager...");
-
     try {
       // Wait for header to be available
       await waitForElement("#page-header", 5000);
@@ -1036,7 +958,6 @@ class SimpleUIManager {
       await this.createVisualizationButton();
 
       this.isInitialized = true;
-      console.log("✅ Simple UI Manager initialized in header");
       return true;
     } catch (error) {
       console.error("❌ Failed to initialize UI Manager:", error);
@@ -1063,16 +984,12 @@ class SimpleUIManager {
 
     // Add to page
     document.body.appendChild(this.vizButton);
-
-    console.log("✅ Visualization button created");
   }
 
   /**
    * Show the tree visualization modal
    */
   async showVisualization() {
-    console.log("🔧 Showing tree visualization");
-
     // Create modal if it doesn't exist
     if (!this.vizModal) {
       this.createVisualizationModal();
@@ -1313,7 +1230,9 @@ class SimpleUIManager {
       let previousActiveVariantNode = null;
 
       sortedTurns.forEach((turn, idx) => {
+        console.log("turn: ", turn);
         const { nodes } = turn;
+        console.log("nodes: ", nodes);
         let aggregated =
           nodes.find((n) => (n.variants || []).some((v) => v.isActive)) ||
           nodes[0];
@@ -1592,9 +1511,6 @@ class SimpleUIManager {
 
         // Add click handler to navigate to this branch
         branchElement.addEventListener("click", async () => {
-          console.log(
-            `🔧 Navigate to variant ${variant.variantIndex} from tree view`
-          );
           await this.navigateToVariantFromTree(node, variant.variantIndex);
         });
 
@@ -1630,7 +1546,6 @@ class SimpleUIManager {
           variantIndex
         );
       if (success) {
-        console.log("Navigation from tree view successful");
       } else {
         console.error("Navigation from tree view failed");
       }
@@ -1660,8 +1575,6 @@ class SimpleTabRenderer {
   }
 
   async renderConversationPath(treeState) {
-    console.log("🔧 Rendering conversation path:", treeState);
-
     if (!extensionState.uiManager?.tabsContainer) {
       console.warn("No tabs container available");
       return;
@@ -1671,8 +1584,6 @@ class SimpleTabRenderer {
 
     // Get the conversation path (sequence of nodes)
     const conversationPath = this.buildConversationPath(treeState);
-
-    console.log("🔧 Conversation path:", conversationPath);
 
     // Clear container
     container.innerHTML = "";
@@ -1787,8 +1698,6 @@ class SimpleTabRenderer {
   }
 
   buildConversationPath(treeState) {
-    console.log("🔧 Building conversation path from tree state:", treeState);
-
     const path = [];
 
     if (treeState.nodes && treeState.nodes.length > 0) {
@@ -1796,24 +1705,18 @@ class SimpleTabRenderer {
       const allNodes = treeState.nodes.map(([id, node]) => node);
       allNodes.sort((a, b) => (a.turnIndex || 0) - (b.turnIndex || 0));
 
-      console.log("🔧 All nodes sorted by turn index:", allNodes);
-
       // Show all nodes, not just first 5
       path.push(...allNodes);
     }
 
-    console.log("🔧 Final conversation path:", path);
     return path;
   }
 
   getNodePreview(node) {
-    console.log("🔧 Getting preview for node:", node);
-
     // Try to get preview from variants
     if (node.variants && node.variants.length > 0) {
       const activeVariant =
         node.variants.find((v) => v.isActive) || node.variants[0];
-      console.log("🔧 Active variant:", activeVariant);
       if (
         activeVariant &&
         activeVariant.preview &&
@@ -1827,7 +1730,6 @@ class SimpleTabRenderer {
     // Try to extract from DOM element if available
     if (node.element) {
       const preview = this.extractPreviewFromElement(node.element);
-      console.log("🔧 Extracted preview from element:", preview);
       if (preview && preview !== "[No content]") return preview;
     }
 
@@ -1849,8 +1751,6 @@ class SimpleTabRenderer {
   }
 
   extractPreviewFromElement(element) {
-    console.log("🔧 Extracting preview from element:", element);
-
     // Try to find the main content area, avoiding navigation controls
     const contentSelectors = [
       ".prose p:first-child",
@@ -1877,7 +1777,6 @@ class SimpleTabRenderer {
         text = text.replace(/\s+/g, " ").substring(0, 80);
         if (text.length > 77) text += "...";
 
-        console.log("🔧 Found content with selector", selector, ":", text);
         if (text.length > 3) {
           // Must have some meaningful content
           return text;
@@ -1897,7 +1796,6 @@ class SimpleTabRenderer {
       text = text.substring(0, 77) + "...";
     }
 
-    console.log("🔧 Fallback extracted text:", text);
     return text || "Message";
   }
 
@@ -1913,7 +1811,6 @@ class SimpleTabRenderer {
 
     // Check if button is disabled
     if (e.target.disabled || e.target.classList.contains("disabled")) {
-      console.log("🔧 Navigation button is disabled, ignoring click");
       return;
     }
 
@@ -1924,23 +1821,16 @@ class SimpleTabRenderer {
     if (direction === -1) {
       // Previous variant - don't wrap around, just prevent if at first
       if (currentVariant === 1) {
-        console.log("🔧 Already at first variant, cannot go previous");
         return;
       }
       targetVariant = currentVariant - 1;
     } else {
       // Next variant - don't wrap around, just prevent if at last
       if (currentVariant === totalVariants) {
-        console.log("🔧 Already at last variant, cannot go next");
         return;
       }
       targetVariant = currentVariant + 1;
     }
-
-    console.log(
-      `🔧 Navigate from variant ${currentVariant} to ${targetVariant} of node ${node.id}`
-    );
-
     // Perform navigation
     if (extensionState.navigationController) {
       const success =
@@ -1949,7 +1839,6 @@ class SimpleTabRenderer {
           targetVariant
         );
       if (success) {
-        console.log("Navigation successful");
       } else {
         console.error("Navigation failed");
       }
@@ -1961,8 +1850,6 @@ class SimpleTabRenderer {
    * @param {Object} node - Node data
    */
   scrollToNode(node) {
-    console.log(`🔧 Scrolling to node ${node.id}`);
-
     if (node.element && node.element.isConnected) {
       // Scroll to the element with smooth behavior
       node.element.scrollIntoView({
@@ -2038,10 +1925,6 @@ class SimpleTabRenderer {
           e.preventDefault();
           e.stopPropagation();
 
-          console.log(
-            `🔧 Navigate to variant ${branch.variantIndex} of node ${node.id}`
-          );
-
           // Hide menu immediately
           menu.classList.remove("show");
 
@@ -2079,8 +1962,6 @@ class SimpleTabRenderer {
           e.preventDefault();
           e.stopPropagation();
 
-          console.log(`🔧 Navigate to variant ${i} of node ${node.id}`);
-
           // Hide menu immediately
           menu.classList.remove("show");
 
@@ -2096,20 +1977,10 @@ class SimpleTabRenderer {
 
     // Show/hide menu on hover with debugging
     nodeElement.addEventListener("mouseenter", () => {
-      console.log("🔧 Mouse entered node, showing menu");
-      console.log("🔧 Menu element:", menu);
-      console.log("🔧 Menu classes before:", menu.className);
       menu.classList.add("show");
-      console.log("🔧 Menu classes after:", menu.className);
-      console.log(
-        "🔧 Menu computed style display:",
-        window.getComputedStyle(menu).display
-      );
-      console.log("🔧 Menu position:", menu.getBoundingClientRect());
     });
 
     nodeElement.addEventListener("mouseleave", () => {
-      console.log("🔧 Mouse left node, hiding menu after delay");
       setTimeout(() => {
         if (!menu.matches(":hover")) {
           menu.classList.remove("show");
@@ -2117,12 +1988,9 @@ class SimpleTabRenderer {
       }, 150);
     });
 
-    menu.addEventListener("mouseenter", () => {
-      console.log("🔧 Mouse entered menu");
-    });
+    menu.addEventListener("mouseenter", () => {});
 
     menu.addEventListener("mouseleave", () => {
-      console.log("🔧 Mouse left menu, hiding immediately");
       menu.classList.remove("show");
     });
   }
@@ -2137,7 +2005,6 @@ class SimpleTabRenderer {
     const totalVariants = node.totalVariants || 1;
 
     if (currentVariant === targetVariant) {
-      console.log("Already on target variant");
       return;
     }
 
@@ -2156,12 +2023,6 @@ class SimpleTabRenderer {
     const steps = useForward ? forwardSteps : backwardSteps;
     const direction = useForward ? 1 : -1;
 
-    console.log(
-      `🔧 Navigating ${steps} steps ${
-        useForward ? "forward" : "backward"
-      } to reach variant ${targetVariant}`
-    );
-
     // Perform the navigation by simulating multiple button clicks
     if (extensionState.navigationController) {
       const success =
@@ -2173,7 +2034,6 @@ class SimpleTabRenderer {
         );
 
       if (success) {
-        console.log("Multi-step navigation successful");
       } else {
         console.error("Multi-step navigation failed");
       }
@@ -2195,15 +2055,8 @@ class SimpleNavigationController {
    */
   async navigateToVariantWithSteps(nodeId, targetVariant, steps, direction) {
     if (this.isNavigating) {
-      console.log("Navigation already in progress, skipping");
       return false;
     }
-
-    console.log(
-      `🔧 Navigate ${steps} steps ${
-        direction > 0 ? "forward" : "backward"
-      } to variant ${targetVariant} of node ${nodeId}`
-    );
 
     try {
       this.isNavigating = true;
@@ -2239,12 +2092,6 @@ class SimpleNavigationController {
 
       // Perform multiple clicks with delays
       for (let i = 0; i < steps; i++) {
-        console.log(
-          `Clicking ${direction > 0 ? "next" : "previous"} button (${
-            i + 1
-          }/${steps})`
-        );
-
         // Check if button is still enabled
         if (targetButton.disabled) {
           console.warn("Button became disabled, stopping navigation");
@@ -2266,7 +2113,6 @@ class SimpleNavigationController {
       // Trigger a rescan to update our data and refresh UI
       setTimeout(async () => {
         if (extensionState.branchDetector && extensionState.treeBuilder) {
-          console.log("🔧 Rescanning after multi-step navigation...");
           const turns = findConversationTurns();
           const detectedBranches =
             extensionState.branchDetector.detectBranches(turns);
@@ -2278,7 +2124,6 @@ class SimpleNavigationController {
         }
       }, 300);
 
-      console.log("Multi-step navigation completed successfully");
       return true;
     } catch (error) {
       console.error("Error during multi-step navigation:", error);
@@ -2290,12 +2135,8 @@ class SimpleNavigationController {
 
   async navigateToVariant(nodeId, variantIndex) {
     if (this.isNavigating) {
-      console.log("Navigation already in progress, skipping");
       return false;
     }
-
-    console.log(`🔧 Navigate to variant ${variantIndex} of node ${nodeId}`);
-
     try {
       this.isNavigating = true;
 
@@ -2311,7 +2152,6 @@ class SimpleNavigationController {
       const targetVariant = variantIndex;
 
       if (currentVariant === targetVariant) {
-        console.log("Already on target variant");
         return true;
       }
 
@@ -2319,10 +2159,6 @@ class SimpleNavigationController {
       const clicksNeeded = targetVariant - currentVariant;
       const isForward = clicksNeeded > 0;
       const absoluteClicks = Math.abs(clicksNeeded);
-
-      console.log(
-        `Need ${absoluteClicks} ${isForward ? "forward" : "backward"} clicks`
-      );
 
       // Find navigation buttons in the element
       const prevButton = node.element.querySelector(
@@ -2347,12 +2183,6 @@ class SimpleNavigationController {
 
       // Click the appropriate button the required number of times
       for (let i = 0; i < absoluteClicks; i++) {
-        console.log(
-          `Clicking ${isForward ? "next" : "previous"} button (${
-            i + 1
-          }/${absoluteClicks})`
-        );
-
         // Check if button is still enabled
         if (targetButton.disabled) {
           console.warn("Button became disabled, stopping navigation");
@@ -2374,7 +2204,6 @@ class SimpleNavigationController {
       // Trigger a rescan to update our data and refresh UI
       setTimeout(async () => {
         if (extensionState.branchDetector && extensionState.treeBuilder) {
-          console.log("🔧 Rescanning after navigation...");
           const turns = findConversationTurns();
           const detectedBranches =
             extensionState.branchDetector.detectBranches(turns);
@@ -2388,7 +2217,6 @@ class SimpleNavigationController {
         }
       }, 200);
 
-      console.log("Navigation completed successfully");
       return true;
     } catch (error) {
       console.error("Error during navigation:", error);
@@ -2413,8 +2241,6 @@ async function renderTabsFromTree() {
  * Set up DOM observer to watch for conversation changes
  */
 function setupDOMObserver() {
-  console.log("🔧 Setting up DOM observer...");
-
   const targetNode = document.querySelector("main") || document.body;
 
   const observer = new MutationObserver((mutations) => {
@@ -2442,7 +2268,6 @@ function setupDOMObserver() {
     }
 
     if (shouldRescan) {
-      console.log("🔧 DOM change detected, rescanning...");
       // Debounce the rescan to avoid too many updates
       clearTimeout(window.extensionRescanTimeout);
       window.extensionRescanTimeout = setTimeout(async () => {
@@ -2466,7 +2291,4 @@ function setupDOMObserver() {
   });
 
   extensionState.domObserver = observer;
-  console.log("✅ DOM observer set up");
 }
-
-console.log("ChatGPT Branching Extension content script loaded");

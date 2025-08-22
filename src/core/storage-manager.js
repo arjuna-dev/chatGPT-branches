@@ -18,7 +18,6 @@ class StorageManager {
    */
   getStorageKey(conversationId, dataType = "tree") {
     const key = `${this.storagePrefix}${conversationId}_${dataType}`;
-    console.log(`Generated storage key: ${key}`);
     return key;
   }
 
@@ -54,13 +53,6 @@ class StorageManager {
       }
 
       localStorage.setItem(key, finalData);
-      console.log(`Saved conversation tree for ${conversationId}`, {
-        key: key,
-        size: this.getDataSize(finalData),
-        compressed: serializedData.length > this.compressionThreshold,
-        nodeCount: dataToSave.treeData?.nodeCount || 0,
-        rootBranches: dataToSave.treeData?.rootBranches?.length || 0,
-      });
 
       return true;
     } catch (error) {
@@ -80,15 +72,9 @@ class StorageManager {
       const rawData = localStorage.getItem(key);
 
       if (!rawData) {
-        console.log(
-          `No saved tree found for conversation ${conversationId} with key ${key}`
-        );
-
-        // Debug: List all keys in localStorage to see what's there
         const allKeys = Object.keys(localStorage).filter((k) =>
           k.startsWith(this.storagePrefix)
         );
-        console.log("Available storage keys:", allKeys);
 
         return null;
       }
@@ -107,11 +93,6 @@ class StorageManager {
         console.warn(`Invalid tree data for conversation ${conversationId}`);
         return null;
       }
-
-      console.log(`Loaded conversation tree for ${conversationId}`, {
-        version: validatedData.version,
-        nodeCount: validatedData.treeData?.nodeCount || 0,
-      });
 
       return validatedData.treeData;
     } catch (error) {
@@ -138,8 +119,6 @@ class StorageManager {
       };
 
       localStorage.setItem(key, JSON.stringify(dataToSave));
-      console.log(`Saved customizations for ${conversationId}`, customizations);
-
       return true;
     } catch (error) {
       console.error("Failed to save customizations:", error);
@@ -355,9 +334,6 @@ class StorageManager {
 
     // Check version and migrate if needed
     if (!data.version || data.version !== this.currentVersion) {
-      console.log(
-        `Migrating data from version ${data.version} to ${this.currentVersion}`
-      );
       data = await this.migrateData(data);
     }
 
@@ -369,7 +345,6 @@ class StorageManager {
     // Check if data is too old (older than 30 days)
     const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days
     if (Date.now() - data.timestamp > maxAge) {
-      console.log("Data is too old, considering it invalid");
       return null;
     }
 
@@ -461,7 +436,6 @@ class StorageManager {
       const toRemove = Math.ceil(keyData.length * 0.25);
       for (let i = 0; i < toRemove; i++) {
         localStorage.removeItem(keyData[i].key);
-        console.log(`Cleaned up old storage entry: ${keyData[i].key}`);
       }
     } catch (error) {
       console.error("Failed to perform storage cleanup:", error);
@@ -484,8 +458,6 @@ class StorageManager {
       for (const key of keys) {
         localStorage.removeItem(key);
       }
-
-      console.log(`Cleared all data for conversation ${conversationId}`);
       return true;
     } catch (error) {
       console.error("Failed to clear conversation data:", error);
@@ -508,7 +480,6 @@ class StorageManager {
       if (!existingData) {
         existingData = {
           nodes: new Map(),
-          edges: new Map(),
           rootBranches: [],
           lastUpdated: Date.now(),
           totalSessions: 0,
@@ -517,7 +488,6 @@ class StorageManager {
 
       // Merge new nodes with existing ones
       const mergedNodes = new Map(existingData.nodes);
-      const mergedEdges = new Map(existingData.edges);
       const mergedRootBranches = [...existingData.rootBranches];
 
       // Add/update nodes from new tree data
@@ -548,17 +518,6 @@ class StorageManager {
         }
       }
 
-      // Add/update edges
-      if (newTreeData.edges && Array.isArray(newTreeData.edges)) {
-        for (const [parentId, children] of newTreeData.edges) {
-          const existingChildren = mergedEdges.get(parentId) || [];
-          const mergedChildren = [
-            ...new Set([...existingChildren, ...children]),
-          ];
-          mergedEdges.set(parentId, mergedChildren);
-        }
-      }
-
       // Update root branches
       if (newTreeData.rootBranches && Array.isArray(newTreeData.rootBranches)) {
         for (const rootId of newTreeData.rootBranches) {
@@ -575,10 +534,8 @@ class StorageManager {
         conversationId,
         treeData: {
           nodes: Array.from(mergedNodes.entries()),
-          edges: Array.from(mergedEdges.entries()),
           rootBranches: mergedRootBranches,
           nodeCount: mergedNodes.size,
-          edgeCount: mergedEdges.size,
           lastUpdated: Date.now(),
           totalSessions: existingData.totalSessions + 1,
         },
@@ -592,13 +549,6 @@ class StorageManager {
           : serializedData;
 
       localStorage.setItem(key, finalData);
-
-      console.log(`Saved comprehensive tree for ${conversationId}`, {
-        totalNodes: mergedNodes.size,
-        totalEdges: mergedEdges.size,
-        rootBranches: mergedRootBranches.length,
-        sessions: comprehensiveData.treeData.totalSessions,
-      });
 
       return true;
     } catch (error) {
@@ -616,11 +566,9 @@ class StorageManager {
     try {
       const key = this.getStorageKey(conversationId, "comprehensive_tree");
       const rawData = localStorage.getItem(key);
+      console.log("Loaded raw data:", rawData);
 
       if (!rawData) {
-        console.log(
-          `No comprehensive tree found for conversation ${conversationId}`
-        );
         return null;
       }
 

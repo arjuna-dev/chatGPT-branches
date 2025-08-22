@@ -93,9 +93,6 @@ export async function importConversationData(data) {
       );
     }
 
-    console.log(
-      `Successfully imported data for conversation ${conversationId}`
-    );
     return true;
   } catch (error) {
     console.error("Failed to import conversation data:", error);

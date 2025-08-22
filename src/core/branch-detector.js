@@ -19,7 +19,6 @@ class BranchDetector {
    * @returns {Object[]} Array of detected branch information
    */
   detectBranches(turnElements) {
-    console.log(`Analyzing ${turnElements.length} turns for branches...`);
     const branches = [];
 
     turnElements.forEach((turn, index) => {
@@ -41,7 +40,6 @@ class BranchDetector {
       }
     });
 
-    console.log(`Detected ${branches.length} branches`);
     return branches;
   }
 
@@ -61,7 +59,6 @@ class BranchDetector {
 
     // Verify navigation controls are present
     const hasNavControls = this.verifyNavigationControls(turnElement);
-    console.log(`Turn ${index} has nav controls:`, hasNavControls);
 
     if (!hasNavControls) {
       console.warn(
@@ -103,7 +100,6 @@ class BranchDetector {
       activeVariantId: `${baseTurnId}_v${variantInfo.current}`,
     };
 
-    console.log("Detected comprehensive branch info:", branchInfo);
     return branchInfo;
   }
 
@@ -165,7 +161,6 @@ class BranchDetector {
     }
 
     const counterText = variantCounter.textContent?.trim();
-    console.log("Found tabular-nums text:", counterText);
 
     if (!counterText) {
       return null;
@@ -173,7 +168,6 @@ class BranchDetector {
 
     // Match pattern like "1/2", "2/3", etc.
     const match = counterText.match(/^(\d+)\/(\d+)$/);
-    console.log("Regex match result:", match);
 
     if (!match) {
       return null;
@@ -188,7 +182,6 @@ class BranchDetector {
       return null;
     }
 
-    console.log("Parsed variant info:", { current, total });
     return { current, total };
   }
 
@@ -204,12 +197,6 @@ class BranchDetector {
     const nextButton = turnElement.querySelector(
       'button[aria-label="Next response"]'
     );
-
-    console.log("Navigation controls check:", {
-      prevButton: !!prevButton,
-      nextButton: !!nextButton,
-      hasEither: !!(prevButton || nextButton),
-    });
 
     // At least one navigation button should be present
     // (Previous might be disabled on first variant, Next might be disabled on last)
@@ -355,8 +342,6 @@ class BranchDetector {
         console.error("Error in onBranchUpdated callback:", error);
       }
     });
-
-    console.log("Updated branch:", updated);
   }
 
   /**
@@ -401,7 +386,6 @@ class BranchDetector {
    */
   clear() {
     this.detectedBranches.clear();
-    console.log("Cleared all detected branches");
   }
 
   /**
