@@ -230,8 +230,6 @@ class TreeBuilder {
     // Clear existing tree
     this.clear();
 
-    // New architecture: Each branch is an independent root node (tab)
-    // Don't link branches together - they represent separate branching points
     for (const branch of branches) {
       this.addBranchAsRootNode(branch);
     }

@@ -6,7 +6,7 @@ class StorageManager {
   constructor() {
     this.storagePrefix = "chatgpt_branching_";
     this.currentVersion = "1.0.0";
-    this.maxStorageSize = 5 * 1024 * 1024; // 5MB limit
+    this.maxStorageSize = 100 * 1024 * 1024; // 100MB limit
     this.compressionThreshold = 1024; // Compress data larger than 1KB
   }
 
