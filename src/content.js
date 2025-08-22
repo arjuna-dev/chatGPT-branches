@@ -1281,11 +1281,11 @@ class SimpleUIManager {
       wrapper.appendChild(legend);
 
       // -----------------------------
-      // HIERARCHICAL TURN CHAIN + VARIANT BRANCHES
+      // VARIANT-TO-VARIANT CHAIN (no intermediate structural nodes)
       // -----------------------------
-      // Goal: Represent conversation as linear chain of turns (parent -> child1 -> child2 ...)
-      // Each turn becomes an unlabeled structural node. Its variant alternatives (if >1) are children branches.
-      // The active variant propagates the main chain to the next structural turn node.
+      // We collapse turns so variants themselves form the hierarchical chain:
+      // ROOT -> variants of turn 0 -> variants of turn 1 (attached to active variant of turn 0) -> ...
+      // Only the active variant of a prior turn receives the next turn's variants as children.
 
       const truncateLabel = (s) =>
         (s || "").replace(/\s+/g, " ").trim().slice(0, 40) +
@@ -1308,82 +1308,55 @@ class SimpleUIManager {
         (a, b) => a.turnIndex - b.turnIndex
       );
 
-      // Build chain
+      // Build variant-only chain
       const rootData = { id: "ROOT", role: "root", name: "ROOT", children: [] };
-      let chainParent = rootData;
+      let previousActiveVariantNode = null;
 
-      sortedTurns.forEach((turn) => {
+      sortedTurns.forEach((turn, idx) => {
         const { nodes } = turn;
-        // Determine active node for this turn (variant with isActive or first)
-        let activeNode = nodes.find((n) =>
-          (n.variants || []).some((v) => v.isActive)
-        );
-        if (!activeNode) activeNode = nodes[0];
-
-        // Structural node for this turn (no label)
-        const structuralNode = {
-          id: `turn-${turn.turnIndex}`,
-          role: "turn",
-          // Name intentionally blank for unlabeled circle
-          name: "",
-          isStructural: true,
-          turnIndex: turn.turnIndex,
-          variants: activeNode.variants || [],
-          totalVariants:
-            activeNode.totalVariants ||
-            (activeNode.variants ? activeNode.variants.length : 1),
-          currentVariant: activeNode.currentVariant || 1,
-          children: [],
-        };
-
-        // Attach structural node to current chain parent
-        chainParent.children.push(structuralNode);
-
-        // Add variant branch children if multiple variants
-        const variants = activeNode.variants || [];
-        if (variants.length > 1) {
-          structuralNode.children = structuralNode.children || [];
-          variants.forEach((v) => {
-            structuralNode.children.push({
-              id: v.id,
-              role: activeNode.role, // inherit role (assistant/user)
-              name: truncateLabel(
-                v.preview || v.userPrompt || `Variant ${v.variantIndex}`
-              ),
-              preview: v.preview,
-              isVariant: true,
-              variantIndex: v.variantIndex,
-              totalVariants: variants.length,
-              currentVariant: v.variantIndex,
-              variants: [v], // for navigation convenience
-            });
-          });
+        let aggregated =
+          nodes.find((n) => (n.variants || []).some((v) => v.isActive)) ||
+          nodes[0];
+        const variants = aggregated.variants || [];
+        if (!variants.length) return;
+        const variantNodes = variants.map((v) => {
+          const labelSource =
+            v.userPrompt || v.preview || `Variant ${v.variantIndex}`;
+          return {
+            id: v.id,
+            role: aggregated.role,
+            name: truncateLabel(labelSource),
+            preview: v.preview,
+            isVariant: true,
+            variantIndex: v.variantIndex,
+            totalVariants: variants.length,
+            currentVariant: v.variantIndex,
+            variants: [v],
+            children: [],
+          };
+        });
+        if (idx === 0 || !previousActiveVariantNode) {
+          rootData.children.push(...variantNodes);
+        } else {
+          previousActiveVariantNode.children.push(...variantNodes);
         }
-
-        // Advance chain parent to structural node (so next turn connects linearly)
-        chainParent = structuralNode;
+        previousActiveVariantNode =
+          variantNodes.find((vn) =>
+            (vn.variants || []).some((vv) => vv.isActive)
+          ) || variantNodes[0];
       });
 
-      // Helper for text label with variant counts (variants already expanded; only show for variant nodes)
       function labelWithVariant(d) {
-        if (d.isStructural) return ""; // no label
-        const base = d.name || d.role || d.id;
-        if ((d.totalVariants || 1) > 1 && d.isVariant) return `${base}`; // counts implicit in sibling set
-        return base;
+        return d.name || d.role || d.id;
       }
 
       const data = rootData;
-
-      // Build hierarchy *after* data assembled
       let root = d3.hierarchy(data);
-
-      // Sort for deterministic ordering (role + name)
       root.sort(
         (a, b) =>
           d3.ascending(a.data.role || "", b.data.role || "") ||
           d3.ascending(a.data.name, b.data.name)
       );
-
       const width = Math.max(928, container.clientWidth - 10);
       const dx = 24; // vertical separation between siblings
       const dy = 140; // horizontal distance per depth; will override using width/(root.height+1) optional
