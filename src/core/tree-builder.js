@@ -299,11 +299,13 @@ class TreeBuilder {
           candidate = idBase + "#" + n;
         }
         const node = {
-          id: candidate,
+          id: candidate, // user prompt derived unique id
           role: t.role,
           text,
           turnIndex: t.turnIndex,
           variantIndex: v.variantIndex,
+          turnId: t.turnId, // original turn identifier (for navigation)
+          variantId: v.id, // original variant id if needed
           children: [],
         };
         leanNodes.set(candidate, node);
