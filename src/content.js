@@ -1198,79 +1198,50 @@ class SimpleUIManager {
       wrapper.appendChild(legend);
 
       // -----------------------------
-      // VARIANT-TO-VARIANT CHAIN (no intermediate structural nodes)
+      // LEAN TREE RENDERING (each variant is a node)
       // -----------------------------
-      // We collapse turns so variants themselves form the hierarchical chain:
-      // ROOT -> variants of turn 0 -> variants of turn 1 (attached to active variant of turn 0) -> ...
-      // Only the active variant of a prior turn receives the next turn's variants as children.
+      // Expect treeState to be lean: { nodes: MapEntries, rootChildren: [] }
+      // Node shape: { id, role, text, turnIndex, variantIndex, children: [childIds], turnId, variantId }
 
-      const truncateLabel = (s) =>
-        (s || "").replace(/\s+/g, " ").trim().slice(0, 40) +
-        ((s || "").length > 40 ? "…" : "");
-
-      // Group nodes by turnIndex
-      const turnGroups = new Map(); // turnIndex -> { turnIndex, nodes: [nodeDatas] }
-      for (const [id, node] of treeState.nodes) {
-        if (typeof node.turnIndex !== "number") continue;
-        if (!turnGroups.has(node.turnIndex)) {
-          turnGroups.set(node.turnIndex, {
-            turnIndex: node.turnIndex,
-            nodes: [],
-          });
-        }
-        turnGroups.get(node.turnIndex).nodes.push({ id, ...node });
-      }
-
-      const sortedTurns = Array.from(turnGroups.values()).sort(
-        (a, b) => a.turnIndex - b.turnIndex
-      );
-
-      // Build variant-only chain
-      const rootData = { id: "ROOT", role: "root", name: "ROOT", children: [] };
-      let previousActiveVariantNode = null;
-
-      sortedTurns.forEach((turn, idx) => {
-        console.log("turn: ", turn);
-        const { nodes } = turn;
-        console.log("nodes: ", nodes);
-        let aggregated =
-          nodes.find((n) => (n.variants || []).some((v) => v.isActive)) ||
-          nodes[0];
-        const variants = aggregated.variants || [];
-        if (!variants.length) return;
-        const variantNodes = variants.map((v) => {
-          const labelSource =
-            v.userPrompt || v.preview || `Variant ${v.variantIndex}`;
-          return {
-            id: v.id,
-            role: aggregated.role,
-            name: truncateLabel(labelSource),
-            preview: v.preview,
+      const isLean = treeState.isLean || treeState.rootChildren;
+      let rootData;
+      if (isLean) {
+        const nodeMap = new Map(treeState.nodes);
+        const toHierarchy = (id) => {
+          if (id === "ROOT") {
+            return {
+              id: "ROOT",
+              role: "root",
+              name: "ROOT",
+              children: (treeState.rootChildren || []).map(toHierarchy),
+            };
+          }
+          const n = nodeMap.get(id);
+          if (!n) return { id, name: id, children: [] };
+            return {
+            id: n.id,
+            role: n.role,
+            name: (n.text || n.id).slice(0, 80),
+            turnIndex: n.turnIndex,
+            variantIndex: n.variantIndex,
+            turnId: n.turnId,
+            variantId: n.variantId,
             isVariant: true,
-            variantIndex: v.variantIndex,
-            totalVariants: variants.length,
-            currentVariant: v.variantIndex,
-            variants: [v],
-            children: [],
+            children: (n.children || []).map(toHierarchy),
           };
-        });
-        if (idx === 0 || !previousActiveVariantNode) {
-          rootData.children.push(...variantNodes);
-        } else {
-          previousActiveVariantNode.children.push(...variantNodes);
-        }
-        previousActiveVariantNode =
-          variantNodes.find((vn) =>
-            (vn.variants || []).some((vv) => vv.isActive)
-          ) || variantNodes[0];
-      });
+        };
+        rootData = toHierarchy("ROOT");
+      } else {
+        // Fallback: minimal root if lean not available
+        rootData = { id: "ROOT", role: "root", name: "ROOT", children: [] };
+      }
 
       function labelWithVariant(d) {
         return d.name || d.role || d.id;
       }
 
-      const data = rootData;
-      let root = d3.hierarchy(data);
+  const data = rootData;
+  let root = d3.hierarchy(data);
       root.sort(
         (a, b) =>
           d3.ascending(a.data.role || "", b.data.role || "") ||
@@ -1344,49 +1315,18 @@ class SimpleUIManager {
       node
         .append("circle")
         .attr("r", 10)
-        .attr("class", (d) => {
-          if (d.data.isStructural) return "root"; // style similar to root/neutral
-          const role = d.data.role || "unknown";
-          const activeVar = (d.data.variants || []).find((v) => v.isActive);
-          const inactive =
-            d.data.isVariant &&
-            d.parent &&
-            d.parent.data.isStructural &&
-            !(d.data.variants || []).some((v) => v.isActive) &&
-            !activeVar;
-          return [role, inactive ? "inactive" : ""].filter(Boolean).join(" ");
-        })
+  .attr("class", (d) => d.data.role || "unknown")
         .style("cursor", "pointer")
         .on("click", (event, d) => {
           event.stopPropagation();
-          if (d.data.isStructural) {
-            // Navigate using its currentVariant (represents active variant)
-            const variantIndex = d.data.currentVariant || 1;
-            this.navigateToVariantFromTree(
-              { ...d.data, id: d.data.id },
-              variantIndex
-            );
-            return;
-          }
-          if (d.data.isVariant) {
-            this.navigateToVariantFromTree(
-              { ...d.data, id: d.data.id },
-              d.data.variantIndex || 1
-            );
-            return;
-          }
-          const activeVar =
-            (d.data.variants || []).find((v) => v.isActive) ||
-            (d.data.variants || [])[0];
-          if (activeVar) {
-            this.navigateToVariantFromTree(
-              { ...d.data, id: d.data.id },
-              activeVar.variantIndex || 1
-            );
-          }
+          // Lean node: navigate using underlying turnId if available
+          const variantIndex = d.data.variantIndex || 1;
+          const navId = d.data.turnId || d.data.id;
+          this.navigateToVariantFromTree({ ...d.data, id: navId }, variantIndex);
         })
         .on("mouseenter", (event, d) => {
           const preview =
+            d.data.text ||
             extensionState.tabRenderer?.getNodePreview(d.data) ||
             d.data.preview ||
             d.data.name;

@@ -212,7 +212,6 @@ class StorageManager {
     // Remove functions and non-serializable data
     const sanitized = {
       nodeCount: treeData.nodeCount || 0,
-      edgeCount: treeData.edgeCount || 0,
       rootBranches: Array.isArray(treeData.rootBranches)
         ? treeData.rootBranches
         : [],
@@ -220,7 +219,6 @@ class StorageManager {
         ? treeData.currentPath
         : [],
       nodes: [],
-      edges: [],
     };
 
     // Sanitize nodes
@@ -245,14 +243,6 @@ class StorageManager {
           type: nodeData.type || "branch",
           timestamp: nodeData.timestamp || Date.now(),
         },
-      ]);
-    }
-
-    // Sanitize edges
-    if (Array.isArray(treeData.edges)) {
-      sanitized.edges = treeData.edges.map(([parentId, children]) => [
-        parentId,
-        Array.isArray(children) ? children : [],
       ]);
     }
 
@@ -472,89 +462,8 @@ class StorageManager {
    * @returns {Promise<boolean>} Success status
    */
   async saveComprehensiveTree(conversationId, newTreeData) {
-    try {
-      const key = this.getStorageKey(conversationId, "comprehensive_tree");
-
-      // Load existing comprehensive tree
-      let existingData = await this.loadComprehensiveTree(conversationId);
-      if (!existingData) {
-        existingData = {
-          nodes: new Map(),
-          rootBranches: [],
-          lastUpdated: Date.now(),
-          totalSessions: 0,
-        };
-      }
-
-      // Merge new nodes with existing ones
-      const mergedNodes = new Map(existingData.nodes);
-      const mergedRootBranches = [...existingData.rootBranches];
-
-      // Add/update nodes from new tree data
-      if (newTreeData.nodes && Array.isArray(newTreeData.nodes)) {
-        for (const [nodeId, nodeData] of newTreeData.nodes) {
-          const existingNode = mergedNodes.get(nodeId);
-
-          // Merge node data, keeping the most recent information
-          const mergedNode = {
-            ...existingNode,
-            ...nodeData,
-            firstSeen: existingNode?.firstSeen || Date.now(),
-            lastSeen: Date.now(),
-            sessionCount: (existingNode?.sessionCount || 0) + 1,
-            // Preserve important historical data
-            allVariants: this.mergeVariants(
-              existingNode?.allVariants || [],
-              nodeData.variants || []
-            ),
-            // Keep track of all branches discovered
-            allBranches: this.mergeBranches(
-              existingNode?.allBranches || [],
-              nodeData.branches || []
-            ),
-          };
-
-          mergedNodes.set(nodeId, mergedNode);
-        }
-      }
-
-      // Update root branches
-      if (newTreeData.rootBranches && Array.isArray(newTreeData.rootBranches)) {
-        for (const rootId of newTreeData.rootBranches) {
-          if (!mergedRootBranches.includes(rootId)) {
-            mergedRootBranches.push(rootId);
-          }
-        }
-      }
-
-      // Prepare comprehensive data for storage
-      const comprehensiveData = {
-        version: this.currentVersion,
-        timestamp: Date.now(),
-        conversationId,
-        treeData: {
-          nodes: Array.from(mergedNodes.entries()),
-          rootBranches: mergedRootBranches,
-          nodeCount: mergedNodes.size,
-          lastUpdated: Date.now(),
-          totalSessions: existingData.totalSessions + 1,
-        },
-      };
-
-      // Save comprehensive tree
-      const serializedData = JSON.stringify(comprehensiveData);
-      const finalData =
-        serializedData.length > this.compressionThreshold
-          ? this.compressData(serializedData)
-          : serializedData;
-
-      localStorage.setItem(key, finalData);
-
-      return true;
-    } catch (error) {
-      console.error("Failed to save comprehensive tree:", error);
-      return false;
-    }
+  // Redirect to lean save
+  return this.saveLeanTree(conversationId, newTreeData);
   }
 
   /**
@@ -563,43 +472,58 @@ class StorageManager {
    * @returns {Promise<Object|null>} Comprehensive tree data or null
    */
   async loadComprehensiveTree(conversationId) {
+    // Redirect to lean load
+    return this.loadLeanTree(conversationId);
+  }
+
+  // ================= LEAN TREE PERSISTENCE =================
+  async saveLeanTree(conversationId, leanState) {
     try {
-      const key = this.getStorageKey(conversationId, "comprehensive_tree");
-      const rawData = localStorage.getItem(key);
-      console.log("Loaded raw data:", rawData);
-
-      if (!rawData) {
-        return null;
-      }
-
-      // Decompress if needed
-      const serializedData = this.isCompressed(rawData)
-        ? this.decompressData(rawData)
-        : rawData;
-
-      const parsedData = JSON.parse(serializedData);
-      const validatedData = await this.validateAndMigrate(parsedData);
-
-      if (!validatedData) {
-        console.warn(
-          `Invalid comprehensive tree data for conversation ${conversationId}`
-        );
-        return null;
-      }
-
-      // Convert arrays back to Maps for easier manipulation
-      const treeData = validatedData.treeData;
-      return {
-        nodes: new Map(treeData.nodes || []),
-        edges: new Map(treeData.edges || []),
-        rootBranches: treeData.rootBranches || [],
-        nodeCount: treeData.nodeCount || 0,
-        edgeCount: treeData.edgeCount || 0,
-        lastUpdated: treeData.lastUpdated || Date.now(),
-        totalSessions: treeData.totalSessions || 0,
+      if (!leanState) return false;
+      const key = this.getStorageKey(conversationId, "lean_tree");
+      const payload = {
+        version: this.currentVersion,
+        timestamp: Date.now(),
+        conversationId,
+        treeData: {
+          nodeCount: leanState.nodeCount,
+          nodes: leanState.nodes, // [id, node]
+          rootChildren: leanState.rootChildren || [],
+        },
       };
-    } catch (error) {
-      console.error("Failed to load comprehensive tree:", error);
+      const serialized = JSON.stringify(payload);
+      const finalData =
+        serialized.length > this.compressionThreshold
+          ? this.compressData(serialized)
+          : serialized;
+      localStorage.setItem(key, finalData);
+      return true;
+    } catch (e) {
+      console.error("Failed to save lean tree:", e);
+      return false;
+    }
+  }
+
+  async loadLeanTree(conversationId) {
+    try {
+      const key = this.getStorageKey(conversationId, "lean_tree");
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const serialized = this.isCompressed(raw)
+        ? this.decompressData(raw)
+        : raw;
+      const parsed = JSON.parse(serialized);
+      const validated = await this.validateAndMigrate(parsed);
+      if (!validated) return null;
+      const td = validated.treeData;
+      return {
+        nodeCount: td.nodeCount || (td.nodes ? td.nodes.length : 0),
+        nodes: new Map(td.nodes || []),
+        rootChildren: td.rootChildren || [],
+        isLean: true,
+      };
+    } catch (e) {
+      console.error("Failed to load lean tree:", e);
       return null;
     }
   }

@@ -280,7 +280,7 @@ class TreeBuilder {
     const turns = this.groupBranchesByTurn(branches || []);
     const leanNodes = new Map();
     const root = { id: "ROOT", children: [] };
-    let prevActiveVariantNode = null;
+  let prevTurnVariantNodes = [];
 
     const safeText = (s) => (s || "").replace(/\s+/g, " ").trim();
 
@@ -311,21 +311,30 @@ class TreeBuilder {
         leanNodes.set(candidate, node);
         return node;
       });
-      if (i === 0 || !prevActiveVariantNode) {
+      if (i === 0 || prevTurnVariantNodes.length === 0) {
+        // First turn variants become root children
         root.children.push(...variantNodes.map((n) => n.id));
       } else {
-        prevActiveVariantNode.children.push(...variantNodes.map((n) => n.id));
+        // Attach new variant nodes as children of every previous turn variant node
+        for (const prevNode of prevTurnVariantNodes) {
+          prevNode.children.push(...variantNodes.map((n) => n.id));
+        }
       }
-      prevActiveVariantNode =
-        variantNodes.find((vn) => {
-          const original = (t.variants || []).find(
-            (ov) => ov.variantIndex === vn.variantIndex
-          );
-          return original && original.isActive;
-        }) || variantNodes[0];
+      prevTurnVariantNodes = variantNodes;
     }
 
     this.lean = { root, nodes: leanNodes };
+  }
+
+  /** Return lean state shaped similarly to previous getTreeState for compatibility */
+  getLeanState() {
+    if (!this.lean) return { nodeCount: 0, nodes: [], rootChildren: [] };
+    return {
+      nodeCount: this.lean.nodes.size,
+      nodes: Array.from(this.lean.nodes.entries()), // [id, node]
+      rootChildren: [...this.lean.root.children],
+      isLean: true,
+    };
   }
 
   /** Return lean tree snapshot */
@@ -706,63 +715,28 @@ class TreeBuilder {
    */
   async getComprehensiveTreeState(conversationId) {
     try {
-      // Load comprehensive tree from storage
-      const storedTree =
-        await extensionState.storageManager?.loadComprehensiveTree(
-          conversationId
-        );
-
-      if (!storedTree) {
-        return this.getTreeState();
+      const storedLean = await extensionState.storageManager?.loadLeanTree(
+        conversationId
+      );
+      if (!storedLean) return this.getLeanState();
+      // Merge simple: union nodes by id
+      if (!this.lean) return storedLean;
+      const merged = new Map(storedLean.nodes);
+      for (const [id, node] of this.lean.nodes) {
+        if (!merged.has(id)) merged.set(id, node);
       }
-
-      // Merge current session data with stored comprehensive data
-      const currentState = this.getTreeState();
-
-      // Create merged nodes map
-      const mergedNodes = new Map(storedTree.nodes);
-
-      // Add current session nodes
-      for (const [nodeId, nodeData] of currentState.nodes) {
-        const existingNode = mergedNodes.get(nodeId);
-
-        if (existingNode) {
-          // Update existing node with current session data
-          mergedNodes.set(nodeId, {
-            ...existingNode,
-            ...nodeData,
-            lastSeen: Date.now(),
-            isCurrentSession: true,
-          });
-        } else {
-          // Add new node from current session
-          mergedNodes.set(nodeId, {
-            ...nodeData,
-            firstSeen: Date.now(),
-            lastSeen: Date.now(),
-            isCurrentSession: true,
-            sessionCount: 1,
-          });
-        }
-      }
-
-      // Merge root branches
-      const mergedRootBranches = [
-        ...new Set([...storedTree.rootBranches, ...currentState.rootBranches]),
-      ];
-
+      const rootChildren = Array.from(
+        new Set([...(storedLean.rootChildren || []), ...this.lean.root.children])
+      );
       return {
-        nodeCount: mergedNodes.size,
-        rootBranches: mergedRootBranches,
-        currentPath: currentState.currentPath,
-        nodes: Array.from(mergedNodes.entries()),
+        nodeCount: merged.size,
+        nodes: Array.from(merged.entries()),
+        rootChildren,
         isComprehensive: true,
-        totalSessions: storedTree.totalSessions || 1,
-        lastUpdated: storedTree.lastUpdated || Date.now(),
       };
-    } catch (error) {
-      console.error("Failed to get comprehensive tree state:", error);
-      return this.getTreeState();
+    } catch (e) {
+      console.warn("Lean comprehensive retrieval fallback:", e);
+      return this.getLeanState();
     }
   }
 
@@ -773,25 +747,14 @@ class TreeBuilder {
    */
   async saveToComprehensiveStorage(conversationId) {
     try {
-      if (!extensionState.storageManager) {
-        console.warn("No storage manager available");
-        return false;
-      }
-
-      const currentState = this.getTreeState();
-      const success = await extensionState.storageManager.saveComprehensiveTree(
+      if (!extensionState.storageManager) return false;
+      if (!this.lean) return false;
+      return await extensionState.storageManager.saveLeanTree(
         conversationId,
-        currentState
+        this.getLeanState()
       );
-
-      if (success) {
-      } else {
-        console.error("Failed to save tree to comprehensive storage");
-      }
-
-      return success;
-    } catch (error) {
-      console.error("Error saving to comprehensive storage:", error);
+    } catch (e) {
+      console.error("Error saving lean tree:", e);
       return false;
     }
   }
