@@ -280,7 +280,8 @@ class TreeBuilder {
     const turns = this.groupBranchesByTurn(branches || []);
     const leanNodes = new Map();
     const root = { id: "ROOT", children: [] };
-  let prevTurnVariantNodes = [];
+    let prevTurnVariantNodes = [];
+    let prevTurnMeta = null;
 
     const safeText = (s) => (s || "").replace(/\s+/g, " ").trim();
 
@@ -313,14 +314,28 @@ class TreeBuilder {
       });
       if (i === 0 || prevTurnVariantNodes.length === 0) {
         // First turn variants become root children
-        root.children.push(...variantNodes.map((n) => n.id));
+        for (const vn of variantNodes) {
+          vn.parentId = root.id;
+          root.children.push(vn.id);
+        }
       } else {
-        // Attach new variant nodes as children of every previous turn variant node
-        for (const prevNode of prevTurnVariantNodes) {
-          prevNode.children.push(...variantNodes.map((n) => n.id));
+        // Choose a single parent (active variant of previous turn if available, else first)
+        let parentNode = null;
+        if (prevTurnMeta && prevTurnMeta.activeVariantIndex != null) {
+          parentNode = prevTurnVariantNodes.find(
+            (n) => n.variantIndex === prevTurnMeta.activeVariantIndex
+          );
+        }
+        if (!parentNode) parentNode = prevTurnVariantNodes[0];
+        if (parentNode) {
+          parentNode.children.push(...variantNodes.map((n) => n.id));
+          for (const vn of variantNodes) {
+            vn.parentId = parentNode.id;
+          }
         }
       }
       prevTurnVariantNodes = variantNodes;
+      prevTurnMeta = t;
     }
 
     this.lean = { root, nodes: leanNodes };
@@ -726,7 +741,10 @@ class TreeBuilder {
         if (!merged.has(id)) merged.set(id, node);
       }
       const rootChildren = Array.from(
-        new Set([...(storedLean.rootChildren || []), ...this.lean.root.children])
+        new Set([
+          ...(storedLean.rootChildren || []),
+          ...this.lean.root.children,
+        ])
       );
       return {
         nodeCount: merged.size,

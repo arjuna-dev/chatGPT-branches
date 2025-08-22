@@ -462,8 +462,8 @@ class StorageManager {
    * @returns {Promise<boolean>} Success status
    */
   async saveComprehensiveTree(conversationId, newTreeData) {
-  // Redirect to lean save
-  return this.saveLeanTree(conversationId, newTreeData);
+    // Redirect to lean save
+    return this.saveLeanTree(conversationId, newTreeData);
   }
 
   /**

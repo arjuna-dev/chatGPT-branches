@@ -1218,7 +1218,7 @@ class SimpleUIManager {
           }
           const n = nodeMap.get(id);
           if (!n) return { id, name: id, children: [] };
-            return {
+          return {
             id: n.id,
             role: n.role,
             name: (n.text || n.id).slice(0, 80),
@@ -1240,8 +1240,8 @@ class SimpleUIManager {
         return d.name || d.role || d.id;
       }
 
-  const data = rootData;
-  let root = d3.hierarchy(data);
+      const data = rootData;
+      let root = d3.hierarchy(data);
       root.sort(
         (a, b) =>
           d3.ascending(a.data.role || "", b.data.role || "") ||
@@ -1315,14 +1315,17 @@ class SimpleUIManager {
       node
         .append("circle")
         .attr("r", 10)
-  .attr("class", (d) => d.data.role || "unknown")
+        .attr("class", (d) => d.data.role || "unknown")
         .style("cursor", "pointer")
         .on("click", (event, d) => {
           event.stopPropagation();
           // Lean node: navigate using underlying turnId if available
           const variantIndex = d.data.variantIndex || 1;
           const navId = d.data.turnId || d.data.id;
-          this.navigateToVariantFromTree({ ...d.data, id: navId }, variantIndex);
+          this.navigateToVariantFromTree(
+            { ...d.data, id: navId },
+            variantIndex
+          );
         })
         .on("mouseenter", (event, d) => {
           const preview =
