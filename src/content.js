@@ -1281,61 +1281,98 @@ class SimpleUIManager {
       wrapper.appendChild(legend);
 
       // -----------------------------
-      // TIDY TREE CONSTRUCTION (Observable pattern)
+      // HIERARCHICAL TURN CHAIN + VARIANT BRANCHES
       // -----------------------------
-      const nodeMap = new Map(treeState.nodes);
-      const edgeMap = new Map(treeState.edges);
-      const rootIds =
-        treeState.rootBranches && treeState.rootBranches.length
-          ? treeState.rootBranches
-          : [treeState.nodes[0][0]];
+      // Goal: Represent conversation as linear chain of turns (parent -> child1 -> child2 ...)
+      // Each turn becomes an unlabeled structural node. Its variant alternatives (if >1) are children branches.
+      // The active variant propagates the main chain to the next structural turn node.
 
-      const buildSubtree = (id) => {
-        const data = nodeMap.get(id) || { id, role: "unknown" };
-        const children = (edgeMap.get(id) || []).map((childId) =>
-          buildSubtree(childId)
-        );
-        return {
-          id,
-          name: truncateLabel(labelForNode(data)),
-          role: data.role,
-          preview: data.preview,
-          variants: data.variants,
-          totalVariants:
-            data.totalVariants || (data.variants ? data.variants.length : 1),
-          currentVariant: data.currentVariant || 1,
-          children: children.length ? children : undefined,
-        };
-      };
-
-      const labelForNode = (n) => {
-        const activeVar =
-          (n.variants || []).find((v) => v.isActive) || (n.variants || [])[0];
-        const base = activeVar?.preview || n.preview || n.role || n.id;
-        return base;
-      };
       const truncateLabel = (s) =>
         (s || "").replace(/\s+/g, " ").trim().slice(0, 40) +
         ((s || "").length > 40 ? "…" : "");
 
-      // Helper for text label with variant counts (define early so it's hoisted for later usage)
+      // Group nodes by turnIndex
+      const turnGroups = new Map(); // turnIndex -> { turnIndex, nodes: [nodeDatas] }
+      for (const [id, node] of treeState.nodes) {
+        if (typeof node.turnIndex !== "number") continue;
+        if (!turnGroups.has(node.turnIndex)) {
+          turnGroups.set(node.turnIndex, {
+            turnIndex: node.turnIndex,
+            nodes: [],
+          });
+        }
+        turnGroups.get(node.turnIndex).nodes.push({ id, ...node });
+      }
+
+      const sortedTurns = Array.from(turnGroups.values()).sort(
+        (a, b) => a.turnIndex - b.turnIndex
+      );
+
+      // Build chain
+      const rootData = { id: "ROOT", role: "root", name: "ROOT", children: [] };
+      let chainParent = rootData;
+
+      sortedTurns.forEach((turn) => {
+        const { nodes } = turn;
+        // Determine active node for this turn (variant with isActive or first)
+        let activeNode = nodes.find((n) =>
+          (n.variants || []).some((v) => v.isActive)
+        );
+        if (!activeNode) activeNode = nodes[0];
+
+        // Structural node for this turn (no label)
+        const structuralNode = {
+          id: `turn-${turn.turnIndex}`,
+          role: "turn",
+          // Name intentionally blank for unlabeled circle
+          name: "",
+          isStructural: true,
+          turnIndex: turn.turnIndex,
+          variants: activeNode.variants || [],
+          totalVariants:
+            activeNode.totalVariants ||
+            (activeNode.variants ? activeNode.variants.length : 1),
+          currentVariant: activeNode.currentVariant || 1,
+          children: [],
+        };
+
+        // Attach structural node to current chain parent
+        chainParent.children.push(structuralNode);
+
+        // Add variant branch children if multiple variants
+        const variants = activeNode.variants || [];
+        if (variants.length > 1) {
+          structuralNode.children = structuralNode.children || [];
+          variants.forEach((v) => {
+            structuralNode.children.push({
+              id: v.id,
+              role: activeNode.role, // inherit role (assistant/user)
+              name: truncateLabel(
+                v.preview || v.userPrompt || `Variant ${v.variantIndex}`
+              ),
+              preview: v.preview,
+              isVariant: true,
+              variantIndex: v.variantIndex,
+              totalVariants: variants.length,
+              currentVariant: v.variantIndex,
+              variants: [v], // for navigation convenience
+            });
+          });
+        }
+
+        // Advance chain parent to structural node (so next turn connects linearly)
+        chainParent = structuralNode;
+      });
+
+      // Helper for text label with variant counts (variants already expanded; only show for variant nodes)
       function labelWithVariant(d) {
+        if (d.isStructural) return ""; // no label
         const base = d.name || d.role || d.id;
-        if ((d.totalVariants || 1) > 1)
-          return `${base} (${d.currentVariant}/${d.totalVariants})`;
+        if ((d.totalVariants || 1) > 1 && d.isVariant) return `${base}`; // counts implicit in sibling set
         return base;
       }
 
-      let data;
-      if (rootIds.length === 1) {
-        data = buildSubtree(rootIds[0]);
-      } else {
-        data = {
-          name: "ROOT",
-          role: "root",
-          children: rootIds.map((r) => buildSubtree(r)),
-        };
-      }
+      const data = rootData;
 
       // Build hierarchy *after* data assembled
       let root = d3.hierarchy(data);
@@ -1416,23 +1453,45 @@ class SimpleUIManager {
         .append("circle")
         .attr("r", 10)
         .attr("class", (d) => {
+          if (d.data.isStructural) return "root"; // style similar to root/neutral
           const role = d.data.role || "unknown";
           const activeVar = (d.data.variants || []).find((v) => v.isActive);
           const inactive =
-            d.data.variants && d.data.variants.length > 0 && !activeVar;
+            d.data.isVariant &&
+            d.parent &&
+            d.parent.data.isStructural &&
+            !(d.data.variants || []).some((v) => v.isActive) &&
+            !activeVar;
           return [role, inactive ? "inactive" : ""].filter(Boolean).join(" ");
         })
         .style("cursor", "pointer")
         .on("click", (event, d) => {
           event.stopPropagation();
+          if (d.data.isStructural) {
+            // Navigate using its currentVariant (represents active variant)
+            const variantIndex = d.data.currentVariant || 1;
+            this.navigateToVariantFromTree(
+              { ...d.data, id: d.data.id },
+              variantIndex
+            );
+            return;
+          }
+          if (d.data.isVariant) {
+            this.navigateToVariantFromTree(
+              { ...d.data, id: d.data.id },
+              d.data.variantIndex || 1
+            );
+            return;
+          }
           const activeVar =
             (d.data.variants || []).find((v) => v.isActive) ||
             (d.data.variants || [])[0];
-          if (activeVar)
+          if (activeVar) {
             this.navigateToVariantFromTree(
               { ...d.data, id: d.data.id },
               activeVar.variantIndex || 1
             );
+          }
         })
         .on("mouseenter", (event, d) => {
           const preview =
@@ -1458,8 +1517,10 @@ class SimpleUIManager {
         .append("text")
         .attr("class", "cb-tree-label")
         .attr("dy", "0.31em")
-        .attr("x", (d) => (d.children ? -14 : 14))
-        .attr("text-anchor", (d) => (d.children ? "end" : "start"))
+        .attr("x", (d) => (d.children && !d.data.isVariant ? -14 : 14))
+        .attr("text-anchor", (d) =>
+          d.children && !d.data.isVariant ? "end" : "start"
+        )
         .text((d) => labelWithVariant(d.data))
         .attr("stroke", "rgba(0,0,0,0.55)")
         .attr("paint-order", "stroke");
