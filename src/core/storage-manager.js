@@ -487,7 +487,7 @@ class StorageManager {
         conversationId,
         treeData: {
           nodeCount: leanState.nodeCount,
-          nodes: leanState.nodes, // [id, node]
+          nodes: leanState.nodes, // plain node objects
           rootChildren: leanState.rootChildren || [],
         },
       };
@@ -518,7 +518,7 @@ class StorageManager {
       const td = validated.treeData;
       return {
         nodeCount: td.nodeCount || (td.nodes ? td.nodes.length : 0),
-        nodes: new Map(td.nodes || []),
+        nodes: td.nodes || [],
         rootChildren: td.rootChildren || [],
         isLean: true,
       };

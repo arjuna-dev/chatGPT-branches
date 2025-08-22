@@ -346,7 +346,7 @@ class TreeBuilder {
     if (!this.lean) return { nodeCount: 0, nodes: [], rootChildren: [] };
     return {
       nodeCount: this.lean.nodes.size,
-      nodes: Array.from(this.lean.nodes.entries()), // [id, node]
+      nodes: Array.from(this.lean.nodes.values()), // plain node objects
       rootChildren: [...this.lean.root.children],
       isLean: true,
     };
@@ -734,11 +734,12 @@ class TreeBuilder {
         conversationId
       );
       if (!storedLean) return this.getLeanState();
-      // Merge simple: union nodes by id
+      // Merge: union nodes by id
       if (!this.lean) return storedLean;
-      const merged = new Map(storedLean.nodes);
-      for (const [id, node] of this.lean.nodes) {
-        if (!merged.has(id)) merged.set(id, node);
+      const byId = new Map();
+      for (const n of storedLean.nodes || []) byId.set(n.id, n);
+      for (const n of this.lean.nodes.values()) {
+        if (!byId.has(n.id)) byId.set(n.id, n);
       }
       const rootChildren = Array.from(
         new Set([
@@ -747,8 +748,8 @@ class TreeBuilder {
         ])
       );
       return {
-        nodeCount: merged.size,
-        nodes: Array.from(merged.entries()),
+        nodeCount: byId.size,
+        nodes: Array.from(byId.values()),
         rootChildren,
         isComprehensive: true,
       };

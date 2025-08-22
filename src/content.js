@@ -1200,13 +1200,14 @@ class SimpleUIManager {
       // -----------------------------
       // LEAN TREE RENDERING (each variant is a node)
       // -----------------------------
-      // Expect treeState to be lean: { nodes: MapEntries, rootChildren: [] }
+      // Expect treeState to be lean: { nodes: [nodeObjects], rootChildren: [] }
       // Node shape: { id, role, text, turnIndex, variantIndex, children: [childIds], turnId, variantId }
 
       const isLean = treeState.isLean || treeState.rootChildren;
       let rootData;
       if (isLean) {
-        const nodeMap = new Map(treeState.nodes);
+        // treeState.nodes is an array of plain node objects
+        const nodeMap = new Map((treeState.nodes || []).map((n) => [n.id, n]));
         const toHierarchy = (id) => {
           if (id === "ROOT") {
             return {
