@@ -2,7 +2,7 @@
 // STORAGE MANAGER CLASS
 // ============================================================================
 
-export class StorageManager {
+class StorageManager {
   constructor() {
     this.storagePrefix = "chatgpt_branching_";
     this.currentVersion = "1.0.0";
@@ -259,6 +259,12 @@ export class StorageManager {
           depth: nodeData.depth || 0,
           isRoot: Boolean(nodeData.isRoot),
           lastSeen: nodeData.lastSeen || Date.now(),
+          // Include variants and branches for hierarchical tree structure
+          variants: Array.isArray(nodeData.variants) ? nodeData.variants : [],
+          branches: Array.isArray(nodeData.branches) ? nodeData.branches : [],
+          // Include other important properties
+          type: nodeData.type || "branch",
+          timestamp: nodeData.timestamp || Date.now(),
         },
       ]);
     }
@@ -485,6 +491,237 @@ export class StorageManager {
       console.error("Failed to clear conversation data:", error);
       return false;
     }
+  }
+
+  /**
+   * Save comprehensive tree data (accumulates all discovered nodes)
+   * @param {string} conversationId - Conversation ID
+   * @param {Object} newTreeData - New tree data to merge
+   * @returns {Promise<boolean>} Success status
+   */
+  async saveComprehensiveTree(conversationId, newTreeData) {
+    try {
+      const key = this.getStorageKey(conversationId, "comprehensive_tree");
+
+      // Load existing comprehensive tree
+      let existingData = await this.loadComprehensiveTree(conversationId);
+      if (!existingData) {
+        existingData = {
+          nodes: new Map(),
+          edges: new Map(),
+          rootBranches: [],
+          lastUpdated: Date.now(),
+          totalSessions: 0,
+        };
+      }
+
+      // Merge new nodes with existing ones
+      const mergedNodes = new Map(existingData.nodes);
+      const mergedEdges = new Map(existingData.edges);
+      const mergedRootBranches = [...existingData.rootBranches];
+
+      // Add/update nodes from new tree data
+      if (newTreeData.nodes && Array.isArray(newTreeData.nodes)) {
+        for (const [nodeId, nodeData] of newTreeData.nodes) {
+          const existingNode = mergedNodes.get(nodeId);
+
+          // Merge node data, keeping the most recent information
+          const mergedNode = {
+            ...existingNode,
+            ...nodeData,
+            firstSeen: existingNode?.firstSeen || Date.now(),
+            lastSeen: Date.now(),
+            sessionCount: (existingNode?.sessionCount || 0) + 1,
+            // Preserve important historical data
+            allVariants: this.mergeVariants(
+              existingNode?.allVariants || [],
+              nodeData.variants || []
+            ),
+            // Keep track of all branches discovered
+            allBranches: this.mergeBranches(
+              existingNode?.allBranches || [],
+              nodeData.branches || []
+            ),
+          };
+
+          mergedNodes.set(nodeId, mergedNode);
+        }
+      }
+
+      // Add/update edges
+      if (newTreeData.edges && Array.isArray(newTreeData.edges)) {
+        for (const [parentId, children] of newTreeData.edges) {
+          const existingChildren = mergedEdges.get(parentId) || [];
+          const mergedChildren = [
+            ...new Set([...existingChildren, ...children]),
+          ];
+          mergedEdges.set(parentId, mergedChildren);
+        }
+      }
+
+      // Update root branches
+      if (newTreeData.rootBranches && Array.isArray(newTreeData.rootBranches)) {
+        for (const rootId of newTreeData.rootBranches) {
+          if (!mergedRootBranches.includes(rootId)) {
+            mergedRootBranches.push(rootId);
+          }
+        }
+      }
+
+      // Prepare comprehensive data for storage
+      const comprehensiveData = {
+        version: this.currentVersion,
+        timestamp: Date.now(),
+        conversationId,
+        treeData: {
+          nodes: Array.from(mergedNodes.entries()),
+          edges: Array.from(mergedEdges.entries()),
+          rootBranches: mergedRootBranches,
+          nodeCount: mergedNodes.size,
+          edgeCount: mergedEdges.size,
+          lastUpdated: Date.now(),
+          totalSessions: existingData.totalSessions + 1,
+        },
+      };
+
+      // Save comprehensive tree
+      const serializedData = JSON.stringify(comprehensiveData);
+      const finalData =
+        serializedData.length > this.compressionThreshold
+          ? this.compressData(serializedData)
+          : serializedData;
+
+      localStorage.setItem(key, finalData);
+
+      console.log(`Saved comprehensive tree for ${conversationId}`, {
+        totalNodes: mergedNodes.size,
+        totalEdges: mergedEdges.size,
+        rootBranches: mergedRootBranches.length,
+        sessions: comprehensiveData.treeData.totalSessions,
+      });
+
+      return true;
+    } catch (error) {
+      console.error("Failed to save comprehensive tree:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Load comprehensive tree data (all discovered nodes)
+   * @param {string} conversationId - Conversation ID
+   * @returns {Promise<Object|null>} Comprehensive tree data or null
+   */
+  async loadComprehensiveTree(conversationId) {
+    try {
+      const key = this.getStorageKey(conversationId, "comprehensive_tree");
+      const rawData = localStorage.getItem(key);
+
+      if (!rawData) {
+        console.log(
+          `No comprehensive tree found for conversation ${conversationId}`
+        );
+        return null;
+      }
+
+      // Decompress if needed
+      const serializedData = this.isCompressed(rawData)
+        ? this.decompressData(rawData)
+        : rawData;
+
+      const parsedData = JSON.parse(serializedData);
+      const validatedData = await this.validateAndMigrate(parsedData);
+
+      if (!validatedData) {
+        console.warn(
+          `Invalid comprehensive tree data for conversation ${conversationId}`
+        );
+        return null;
+      }
+
+      // Convert arrays back to Maps for easier manipulation
+      const treeData = validatedData.treeData;
+      return {
+        nodes: new Map(treeData.nodes || []),
+        edges: new Map(treeData.edges || []),
+        rootBranches: treeData.rootBranches || [],
+        nodeCount: treeData.nodeCount || 0,
+        edgeCount: treeData.edgeCount || 0,
+        lastUpdated: treeData.lastUpdated || Date.now(),
+        totalSessions: treeData.totalSessions || 0,
+      };
+    } catch (error) {
+      console.error("Failed to load comprehensive tree:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Merge variant arrays, avoiding duplicates
+   * @param {Array} existing - Existing variants
+   * @param {Array} newVariants - New variants to merge
+   * @returns {Array} Merged variants
+   */
+  mergeVariants(existing, newVariants) {
+    const merged = [...existing];
+
+    for (const newVariant of newVariants) {
+      const existingIndex = merged.findIndex(
+        (v) => v.variantIndex === newVariant.variantIndex
+      );
+
+      if (existingIndex >= 0) {
+        // Update existing variant with new information
+        merged[existingIndex] = {
+          ...merged[existingIndex],
+          ...newVariant,
+          lastSeen: Date.now(),
+        };
+      } else {
+        // Add new variant
+        merged.push({
+          ...newVariant,
+          firstSeen: Date.now(),
+          lastSeen: Date.now(),
+        });
+      }
+    }
+
+    return merged;
+  }
+
+  /**
+   * Merge branch arrays, avoiding duplicates
+   * @param {Array} existing - Existing branches
+   * @param {Array} newBranches - New branches to merge
+   * @returns {Array} Merged branches
+   */
+  mergeBranches(existing, newBranches) {
+    const merged = [...existing];
+
+    for (const newBranch of newBranches) {
+      const existingIndex = merged.findIndex(
+        (b) => b.variantIndex === newBranch.variantIndex
+      );
+
+      if (existingIndex >= 0) {
+        // Update existing branch
+        merged[existingIndex] = {
+          ...merged[existingIndex],
+          ...newBranch,
+          lastSeen: Date.now(),
+        };
+      } else {
+        // Add new branch
+        merged.push({
+          ...newBranch,
+          firstSeen: Date.now(),
+          lastSeen: Date.now(),
+        });
+      }
+    }
+
+    return merged;
   }
 
   /**

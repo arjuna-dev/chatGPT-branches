@@ -2,7 +2,7 @@
 // TREE BUILDER CLASS
 // ============================================================================
 
-export class TreeBuilder {
+class TreeBuilder {
   constructor() {
     this.nodes = new Map(); // nodeId -> BranchNode
     this.edges = new Map(); // parentId -> [childId1, childId2, ...]
@@ -26,6 +26,10 @@ export class TreeBuilder {
       parent: null,
       isRoot: false,
       depth: 0,
+      // Add branches property for hierarchical structure
+      branches: nodeData.variants
+        ? this.createBranchesFromVariants(nodeData.variants, nodeData)
+        : [],
     };
 
     this.nodes.set(nodeId, treeNode);
@@ -254,23 +258,34 @@ export class TreeBuilder {
     // Clear existing tree
     this.clear();
 
-    // New architecture: Group by conversation turns, not individual branches
-    const conversationTurns = this.groupBranchesByTurn(branches);
-
-    console.log("Grouped into conversation turns:", conversationTurns);
-
-    // Add turn nodes to the tree
-    for (const turn of conversationTurns) {
-      this.addConversationTurn(turn);
+    // New architecture: Each branch is an independent root node (tab)
+    // Don't link branches together - they represent separate branching points
+    for (const branch of branches) {
+      this.addBranchAsRootNode(branch);
     }
 
-    // Build relationships between conversation turns
-    this.linkConversationTurns(conversationTurns);
+    // All branches are root nodes
+    this.rootBranches = branches.map(
+      (branch) => branch.baseTurnId || branch.turnId
+    );
 
-    // Identify root turns (turns with no parent)
-    this.findRootTurns();
-
+    console.log("🔧 NEW TREE LOGIC: Each branch is now a root node");
+    console.log("🔧 Root branches:", this.rootBranches);
     console.log("Conversation tree built successfully:", this.getTreeSummary());
+
+    // Save to comprehensive storage (async, non-blocking)
+    if (
+      typeof extensionState !== "undefined" &&
+      extensionState?.conversationId
+    ) {
+      setTimeout(() => {
+        this.saveToComprehensiveStorage(extensionState.conversationId).catch(
+          (error) => {
+            console.error("Failed to save to comprehensive storage:", error);
+          }
+        );
+      }, 0);
+    }
 
     // Notify callbacks
     this.notifyTreeUpdated();
@@ -322,6 +337,147 @@ export class TreeBuilder {
     return Array.from(turnMap.values()).sort(
       (a, b) => a.turnIndex - b.turnIndex
     );
+  }
+
+  /**
+   * Add a branch as an independent root node
+   * @param {Object} branchData - Branch data from BranchDetector
+   */
+  addBranchAsRootNode(branchData) {
+    const nodeId = branchData.baseTurnId || branchData.turnId;
+
+    // Create branch node as root
+    const branchNode = {
+      id: nodeId,
+      type: "branch",
+      turnId: nodeId,
+      turnIndex: branchData.turnIndex,
+      role: branchData.role,
+      variants: branchData.variants || [],
+      currentVariant: branchData.currentVariant,
+      totalVariants: branchData.totalVariants,
+      children: [], // Sub-branches (for future hierarchical support)
+      parent: null, // Root nodes have no parent
+      isRoot: true, // Mark as root
+      depth: 0,
+      timestamp: branchData.timestamp,
+      element: branchData.element,
+      // New branches property for hierarchical tree structure
+      branches: this.createBranchesFromVariants(
+        branchData.variants || [],
+        branchData
+      ),
+    };
+
+    this.nodes.set(nodeId, branchNode);
+    console.log("Added branch as root node:", nodeId);
+  }
+
+  /**
+   * Create branches array from variants data
+   * @param {Array} variants - Array of variant data
+   * @param {Object} branchData - Original branch data
+   * @returns {Array} Array of branch objects with userPrompt and nodes
+   */
+  createBranchesFromVariants(variants, branchData) {
+    const branches = [];
+
+    variants.forEach((variant, index) => {
+      // Extract user prompt from the previous turn or context
+      const userPrompt = this.extractUserPromptForVariant(variant, branchData);
+
+      branches.push({
+        id: variant.id,
+        variantIndex: variant.variantIndex,
+        userPrompt: userPrompt,
+        preview: variant.preview,
+        isActive: variant.isActive,
+        nodes: [], // Can contain sub-nodes which can have their own branches
+        timestamp: variant.timestamp || branchData.timestamp,
+        textHash: variant.textHash,
+      });
+    });
+
+    return branches;
+  }
+
+  /**
+   * Extract user prompt that led to this variant
+   * @param {Object} variant - Variant data
+   * @param {Object} branchData - Branch data
+   * @returns {string} User prompt or fallback text
+   */
+  extractUserPromptForVariant(variant, branchData) {
+    // Try to find the user prompt from the conversation context
+    // This would typically be the previous user message that led to this assistant response
+
+    if (branchData.role === "assistant") {
+      // For assistant responses, try to find the preceding user message
+      const userPrompt = this.findPrecedingUserMessage(branchData);
+      if (userPrompt) {
+        return `"${userPrompt}" → Variant ${variant.variantIndex}`;
+      }
+      return `Response variant ${variant.variantIndex}`;
+    } else if (branchData.role === "user") {
+      // For user messages, use the actual content as the prompt
+      const content =
+        variant.preview || branchData.element?.textContent?.trim();
+      if (content && content.length > 3) {
+        const truncated =
+          content.length > 50 ? content.substring(0, 47) + "..." : content;
+        return truncated;
+      }
+      return `User input ${variant.variantIndex}`;
+    }
+
+    return `${branchData.role} variant ${variant.variantIndex}`;
+  }
+
+  /**
+   * Find the preceding user message for an assistant response
+   * @param {Object} branchData - Branch data for assistant response
+   * @returns {string|null} User message text or null if not found
+   */
+  findPrecedingUserMessage(branchData) {
+    try {
+      // Look for the previous conversation turn in the DOM
+      const currentElement = branchData.element;
+      if (!currentElement) return null;
+
+      // Find all conversation turns
+      const allTurns = Array.from(
+        document.querySelectorAll(
+          '[data-testid="conversation-turn"], article, .group\\/conversation-turn'
+        )
+      );
+      const currentIndex = allTurns.indexOf(currentElement);
+
+      if (currentIndex > 0) {
+        // Look at the previous turn
+        const previousTurn = allTurns[currentIndex - 1];
+
+        // Extract text content, avoiding navigation elements
+        const textContent = previousTurn.textContent?.trim();
+        if (textContent) {
+          // Clean up and truncate
+          let cleanText = textContent
+            .replace(/\d+\/\d+/g, "")
+            .replace(/Previous response|Next response/gi, "")
+            .trim();
+          cleanText = cleanText.replace(/\s+/g, " ");
+
+          if (cleanText.length > 60) {
+            cleanText = cleanText.substring(0, 57) + "...";
+          }
+
+          return cleanText || null;
+        }
+      }
+    } catch (error) {
+      console.warn("Error finding preceding user message:", error);
+    }
+
+    return null;
   }
 
   /**
@@ -484,8 +640,23 @@ export class TreeBuilder {
    * @returns {Object} Serializable tree data
    */
   exportData() {
+    // Ensure all nodes have their branches property properly set
+    const nodesWithBranches = new Map();
+    for (const [nodeId, node] of this.nodes) {
+      const nodeWithBranches = {
+        ...node,
+        // Ensure branches property exists and is properly structured
+        branches:
+          node.branches ||
+          (node.variants
+            ? this.createBranchesFromVariants(node.variants, node)
+            : []),
+      };
+      nodesWithBranches.set(nodeId, nodeWithBranches);
+    }
+
     return {
-      nodes: Object.fromEntries(this.nodes),
+      nodes: Object.fromEntries(nodesWithBranches),
       edges: Object.fromEntries(this.edges),
       currentPath: this.currentPath,
       rootBranches: this.rootBranches,
@@ -505,6 +676,118 @@ export class TreeBuilder {
       nodes: Array.from(this.nodes.entries()),
       edges: Array.from(this.edges.entries()),
     };
+  }
+
+  /**
+   * Get comprehensive tree state (includes all historical nodes)
+   * @param {string} conversationId - Conversation ID for loading stored data
+   * @returns {Promise<Object>} Complete tree state with all discovered nodes
+   */
+  async getComprehensiveTreeState(conversationId) {
+    try {
+      // Load comprehensive tree from storage
+      const storedTree =
+        await extensionState.storageManager?.loadComprehensiveTree(
+          conversationId
+        );
+
+      if (!storedTree) {
+        // No stored data, return current tree state
+        console.log(
+          "No comprehensive tree data found, returning current state"
+        );
+        return this.getTreeState();
+      }
+
+      // Merge current session data with stored comprehensive data
+      const currentState = this.getTreeState();
+
+      // Create merged nodes map
+      const mergedNodes = new Map(storedTree.nodes);
+
+      // Add current session nodes
+      for (const [nodeId, nodeData] of currentState.nodes) {
+        const existingNode = mergedNodes.get(nodeId);
+
+        if (existingNode) {
+          // Update existing node with current session data
+          mergedNodes.set(nodeId, {
+            ...existingNode,
+            ...nodeData,
+            lastSeen: Date.now(),
+            isCurrentSession: true,
+          });
+        } else {
+          // Add new node from current session
+          mergedNodes.set(nodeId, {
+            ...nodeData,
+            firstSeen: Date.now(),
+            lastSeen: Date.now(),
+            isCurrentSession: true,
+            sessionCount: 1,
+          });
+        }
+      }
+
+      // Merge edges
+      const mergedEdges = new Map(storedTree.edges);
+      for (const [parentId, children] of currentState.edges) {
+        const existingChildren = mergedEdges.get(parentId) || [];
+        const mergedChildren = [...new Set([...existingChildren, ...children])];
+        mergedEdges.set(parentId, mergedChildren);
+      }
+
+      // Merge root branches
+      const mergedRootBranches = [
+        ...new Set([...storedTree.rootBranches, ...currentState.rootBranches]),
+      ];
+
+      return {
+        nodeCount: mergedNodes.size,
+        edgeCount: mergedEdges.size,
+        rootBranches: mergedRootBranches,
+        currentPath: currentState.currentPath,
+        nodes: Array.from(mergedNodes.entries()),
+        edges: Array.from(mergedEdges.entries()),
+        isComprehensive: true,
+        totalSessions: storedTree.totalSessions || 1,
+        lastUpdated: storedTree.lastUpdated || Date.now(),
+      };
+    } catch (error) {
+      console.error("Failed to get comprehensive tree state:", error);
+      return this.getTreeState();
+    }
+  }
+
+  /**
+   * Save current tree state to comprehensive storage
+   * @param {string} conversationId - Conversation ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async saveToComprehensiveStorage(conversationId) {
+    try {
+      if (!extensionState.storageManager) {
+        console.warn("No storage manager available");
+        return false;
+      }
+
+      const currentState = this.getTreeState();
+      const success = await extensionState.storageManager.saveComprehensiveTree(
+        conversationId,
+        currentState
+      );
+
+      if (success) {
+        console.log("Successfully saved tree to comprehensive storage");
+      } else {
+        console.error("Failed to save tree to comprehensive storage");
+      }
+
+      return success;
+    } catch (error) {
+      console.error("Error saving to comprehensive storage:", error);
+      return false;
+    }
   }
 
   /**
@@ -576,8 +859,19 @@ export class TreeBuilder {
     try {
       // Handle nodes - data.nodes is already an array of [key, value] pairs
       if (Array.isArray(data.nodes)) {
-        this.nodes = new Map(data.nodes);
-        console.log(`Imported ${this.nodes.size} nodes`);
+        const nodesMap = new Map();
+        for (const [nodeId, nodeData] of data.nodes) {
+          // Ensure branches property exists, create it if missing
+          if (!nodeData.branches && nodeData.variants) {
+            nodeData.branches = this.createBranchesFromVariants(
+              nodeData.variants,
+              nodeData
+            );
+          }
+          nodesMap.set(nodeId, nodeData);
+        }
+        this.nodes = nodesMap;
+        console.log(`Imported ${this.nodes.size} nodes with branches`);
       }
 
       // Handle edges - data.edges is already an array of [key, value] pairs

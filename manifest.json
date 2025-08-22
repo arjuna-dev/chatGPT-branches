@@ -11,10 +11,15 @@
   "content_scripts": [
     {
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["src/content.js"],
+      "js": [
+        "src/utils/dom-utils.js",
+        "src/core/storage-manager.js",
+        "src/core/tree-builder.js",
+        "src/core/branch-detector.js",
+        "src/content.js"
+      ],
       "css": ["styles/extension.css"],
-      "run_at": "document_idle",
-      "type": "module"
+      "run_at": "document_idle"
     }
   ],
 

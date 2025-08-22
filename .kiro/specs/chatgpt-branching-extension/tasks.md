@@ -72,45 +72,24 @@
 
 - [ ] 10. Add branch renaming functionality
 
-  - Implement double-click handlers on tabs for inline editing
-  - Create pencil icon buttons in hover menus for branch renaming
-  - Add input validation and persistence for custom branch names
+  - Create right-click context menu
+  - One menu item for renaming node
+  - Add persistence for custom branch names
   - Write UI feedback for successful/failed rename operations
   - _Requirements: 1.4, 2.2, 3.1, 3.5_
 
-- [ ] 11. Implement color customization system
-
-  - Create right-click context menu for tab color selection
-  - Implement color picker UI with predefined color palette
-  - Add color persistence and application to tab styling
-  - Write color validation and fallback handling
-  - _Requirements: 1.5, 3.2, 3.4_
-
-- [ ] 12. Build hover menu system for sub-branches
+- [x] 12. Build hover menu system for sub-branches
 
   - Implement hover detection and menu positioning for root tabs
   - Create dropdown menu rendering with sub-branch items
   - Add nested sub-menu support for deeper branch hierarchies
   - Implement menu item click handlers for sub-branch navigation
+  - Add buttons "<" and ">" like in the original chatgpt UI on our node buttons where clicking those take you to the next branch
+  - When clicking on hover menu items we will have the same functionality mimicking clicks so we go to the correct branch. If next branch we simulate a click on either "<" or ">". If 2 places to the left we simulate to clicks on "<".
+  - Clicking on the node button should scroll down to that NODE!
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 13. Add floating button with placeholder modal
-
-  - Create fixed-position floating button in top-right corner
-  - Implement modal dialog with "Graph view coming soon" placeholder text
-  - Add button positioning that avoids ChatGPT interface conflicts
-  - Write modal open/close handlers and keyboard navigation support
-  - _Requirements: 4.1, 4.2, 4.3_
-
-- [ ] 14. Implement keyboard accessibility support
-
-  - Add tab navigation through all interactive elements in logical order
-  - Implement Enter key handlers for branch selection and menu activation
-  - Add Escape key handling to close menus and modals
-  - Write ARIA labels and descriptions for screen reader compatibility
-  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
-
-- [x] 15. Add comprehensive error handling and recovery
+- [x] 13. Add comprehensive error handling and recovery
 
   - Implement graceful degradation when DOM detection fails
   - Add retry logic for failed branch detection and navigation
@@ -118,15 +97,7 @@
   - Write fallback behaviors to maintain ChatGPT functionality if extension fails
   - _Requirements: 7.5, 8.4_
 
-- [ ] 16. Create automated tests for core functionality
-
-  - Write unit tests for branch detection algorithms using mock DOM structures
-  - Create tests for tree building and navigation path logic
-  - Implement integration tests for storage persistence and retrieval
-  - Add performance tests to verify extension doesn't slow ChatGPT interface
-  - _Requirements: 7.1, 7.3, 7.4_
-
-- [x] 17. Refactor monolithic content.js into modular architecture
+- [x] 14. Refactor monolithic content.js into modular architecture
 
   - Extract DOM utilities into src/utils/dom-utils.js module
   - Extract StorageManager class into src/core/storage-manager.js module
@@ -136,19 +107,20 @@
   - Update manifest.json to support ES6 modules with "type": "module"
   - _Requirements: Code maintainability and organization_
 
-- [ ] 18. Complete remaining module extractions
+- [x] 15. Implement tree visualization with floating button
 
-  - Extract DOMObserver class into src/core/dom-observer.js module
-  - Extract TabRenderer class into src/core/tab-renderer.js module
-  - Extract NavigationController class into src/core/navigation-controller.js module
-  - Extract UIManager class into src/core/ui-manager.js module
-  - Extract PerformanceMonitor class into src/utils/performance-monitor.js module
-  - Update main content.js to import and use all extracted modules
-  - _Requirements: Complete modular architecture_
+  - Create sticky floating button in top-right corner with tree icon
+  - Implement full-screen modal overlay for tree visualization
+  - Build tree visualization showing all nodes with their variants and branches
+  - Add interactive navigation from tree view to specific variants
+  - Include proper styling with glass morphism design and hover effects
+  - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 19. Integrate all components and test end-to-end workflows
-  - Connect DOM observer, branch detector, UI manager, and storage components
-  - Test complete user workflows from branch creation to navigation
-  - Verify persistence across page reloads and browser sessions
-  - Validate extension behavior with various conversation structures and branch depths
-  - _Requirements: All requirements integration testing_
+- [x] 16. Enhance tree visualization with comprehensive node storage
+
+  - Implement comprehensive tree storage that accumulates ALL discovered nodes across sessions
+  - Add methods to merge new nodes with previously stored nodes in localStorage
+  - Update tree visualization to show complete historical tree data
+  - Add tree statistics display (total nodes, sessions, comprehensive vs current)
+  - Implement automatic saving to comprehensive storage when tree is updated
+  - _Requirements: 4.1, 4.4, 5.1, 5.3_

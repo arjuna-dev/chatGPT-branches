@@ -6,7 +6,7 @@
  * Extract conversation ID from ChatGPT URL
  * @returns {string|null} Conversation ID or null if not found
  */
-export function extractConversationId() {
+function extractConversationId() {
   const url = window.location.href;
 
   // Match patterns like /c/conversation-id or /chat/conversation-id
@@ -33,7 +33,7 @@ export function extractConversationId() {
  * Find the main conversation container
  * @returns {Element|null} The conversation container element
  */
-export function findConversationContainer() {
+function findConversationContainer() {
   // Priority order of selectors for conversation container
   const selectors = [
     'main[role="main"]',
@@ -80,7 +80,7 @@ export function findConversationContainer() {
  * Find all conversation turn elements
  * @returns {Element[]} Array of turn elements
  */
-export function findConversationTurns() {
+function findConversationTurns() {
   // Priority order of selectors for turn elements
   const selectors = [
     '[data-testid="conversation-turn"]',
@@ -142,7 +142,7 @@ export function findConversationTurns() {
  * Fallback method to find turns by looking for branch indicators
  * @returns {Element[]} Array of turn elements
  */
-export function findTurnsByBranchIndicators() {
+function findTurnsByBranchIndicators() {
   const turns = [];
 
   // Find all elements with tabular-nums (branch indicators)
@@ -185,7 +185,7 @@ export function findTurnsByBranchIndicators() {
  * @param {Element} element - Element to check
  * @returns {boolean} True if likely a turn container
  */
-export function isLikelyTurnContainer(element) {
+function isLikelyTurnContainer(element) {
   // Check for common patterns that indicate a turn container
   const className = element.className || "";
   const hasRelevantClass = [
@@ -224,7 +224,7 @@ export function isLikelyTurnContainer(element) {
 /**
  * Debug function to help identify the page structure
  */
-export function debugPageStructure() {
+function debugPageStructure() {
   console.log("=== DEBUG: Page Structure Analysis ===");
 
   const main = document.querySelector("main");
@@ -285,7 +285,7 @@ export function debugPageStructure() {
  * @param {Element} element - The element
  * @returns {Object} Object with data attributes
  */
-export function getDataAttributes(element) {
+function getDataAttributes(element) {
   const dataAttrs = {};
   for (const attr of element.attributes) {
     if (attr.name.startsWith("data-")) {
@@ -301,7 +301,7 @@ export function getDataAttributes(element) {
  * @param {number} index - The turn index as fallback
  * @returns {string} Stable turn ID
  */
-export function generateTurnId(turnElement, index) {
+function generateTurnId(turnElement, index) {
   // Try to use stable attributes first
   const stableAttributes = [
     "data-message-id",
@@ -334,7 +334,7 @@ export function generateTurnId(turnElement, index) {
  * @param {Element} element - The element
  * @returns {string} DOM path string
  */
-export function getDOMPath(element) {
+function getDOMPath(element) {
   const path = [];
   let current = element;
 
@@ -376,7 +376,7 @@ export function getDOMPath(element) {
  * @param {string} str - String to hash
  * @returns {string} Hash string
  */
-export function simpleHash(str) {
+function simpleHash(str) {
   let hash = 0;
   if (str.length === 0) return hash.toString();
 
@@ -395,7 +395,7 @@ export function simpleHash(str) {
  * @param {Element} child - Child element to append
  * @returns {boolean} Success status
  */
-export function safeAppendChild(parent, child) {
+function safeAppendChild(parent, child) {
   try {
     // Check if parent is still in DOM and not controlled by React
     if (!parent || !parent.isConnected) {
@@ -428,7 +428,7 @@ export function safeAppendChild(parent, child) {
  * @param {Element} referenceElement - Reference element
  * @returns {boolean} Success status
  */
-export function safeInsertBefore(parent, newElement, referenceElement) {
+function safeInsertBefore(parent, newElement, referenceElement) {
   try {
     // Check if parent is still in DOM and not controlled by React
     if (!parent || !parent.isConnected) {
@@ -460,7 +460,7 @@ export function safeInsertBefore(parent, newElement, referenceElement) {
  * @param {string} html - HTML content
  * @returns {boolean} Success status
  */
-export function safeSetInnerHTML(element, html) {
+function safeSetInnerHTML(element, html) {
   try {
     // Check if element is still in DOM and not controlled by React
     if (!element || !element.isConnected) {
@@ -490,7 +490,7 @@ export function safeSetInnerHTML(element, html) {
  * Check if we're on a valid ChatGPT conversation page
  * @returns {boolean} True if on a valid conversation page
  */
-export function isValidChatGPTPage() {
+function isValidChatGPTPage() {
   const url = window.location.href;
   const hostname = window.location.hostname;
 
@@ -524,7 +524,7 @@ export function isValidChatGPTPage() {
  * @param {number} timeout - Timeout in milliseconds (default: 5000)
  * @returns {Promise<Element|null>} Promise that resolves with the element or null on timeout
  */
-export function waitForElement(selector, timeout = 5000) {
+function waitForElement(selector, timeout = 5000) {
   return new Promise((resolve) => {
     const element = document.querySelector(selector);
     if (element) {

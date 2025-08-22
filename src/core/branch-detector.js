@@ -2,13 +2,9 @@
 // BRANCH DETECTOR CLASS
 // ============================================================================
 
-import {
-  generateTurnId,
-  simpleHash,
-  findConversationTurns,
-} from "../utils/dom-utils.js";
+// Dependencies: generateTurnId, simpleHash, findConversationTurns from dom-utils.js
 
-export class BranchDetector {
+class BranchDetector {
   constructor() {
     this.detectedBranches = new Map(); // turnId -> branch info
     this.callbacks = {
