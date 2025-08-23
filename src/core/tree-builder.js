@@ -331,6 +331,10 @@ class TreeBuilder {
             turnId: t.turnId, // original turn identifier (for navigation)
             variantId: v.id, // original variant id if needed
             children: [],
+            isDiscovered: v.isDiscovered || false,
+            isActive: v.isActive || false,
+            textHash: v.textHash || null,
+            timestamp: v.timestamp,
           };
           leanNodes.set(candidate, node);
           return node;
