@@ -1328,17 +1328,8 @@ class SimpleUIManager {
           );
         })
         .on("mouseenter", (event, d) => {
-          const preview =
-            d.data.text ||
-            extensionState.tabRenderer?.getNodePreview(d.data) ||
-            d.data.preview ||
-            d.data.name;
-          tooltip.innerHTML = `<strong>${
-            d.data.role || "Node"
-          }</strong><br>${preview}`;
-          tooltip.style.display = "block";
-          tooltip.style.left = event.pageX + 16 + "px";
-          tooltip.style.top = event.pageY + 16 + "px";
+          // Tooltip disabled per request
+          tooltip.style.display = "none";
           // Highlight ancestor path links
           const ancestors = new Set();
           let cur = d;
@@ -1348,10 +1339,7 @@ class SimpleUIManager {
           }
           linkPaths.classed("highlight", (l) => ancestors.has(l.target));
         })
-        .on("mousemove", (event) => {
-          tooltip.style.left = event.pageX + 16 + "px";
-          tooltip.style.top = event.pageY + 16 + "px";
-        })
+        .on("mousemove", () => {})
         .on("mouseleave", () => {
           tooltip.style.display = "none";
           linkPaths.classed("highlight", false);
