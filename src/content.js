@@ -271,7 +271,7 @@ async function performInitialScan() {
         ];
 
         return {
-          baseTurnId: `turn-${index}`,
+          id: `turn-${index}`,
           turnIndex: index,
           currentVariant: 1,
           totalVariants: 1,
@@ -1203,39 +1203,35 @@ class SimpleUIManager {
       // Expect treeState to be lean: { nodes: [nodeObjects], rootChildren: [] }
       // Node shape: { id, role, text, turnIndex, variantIndex, children: [childIds], turnId, variantId }
 
-      const isLean = treeState.isLean || treeState.rootChildren;
+      // const isLean = treeState.isLean || treeState.rootChildren;
       let rootData;
-      if (isLean) {
-        // treeState.nodes is an array of plain node objects
-        const nodeMap = new Map((treeState.nodes || []).map((n) => [n.id, n]));
-        const toHierarchy = (id) => {
-          if (id === "ROOT") {
-            return {
-              id: "ROOT",
-              role: "root",
-              name: "ROOT",
-              children: (treeState.rootChildren || []).map(toHierarchy),
-            };
-          }
-          const n = nodeMap.get(id);
-          if (!n) return { id, name: id, children: [] };
+      // treeState.nodes is an array of plain node objects
+      console.log("treeState.nodes:", treeState.nodes);
+      const nodeMap = new Map((treeState.nodes || []).map((n) => [n.id, n]));
+      const toHierarchy = (id) => {
+        if (id === "ROOT") {
           return {
-            id: n.id,
-            role: n.role,
-            name: (n.text || n.id).slice(0, 80),
-            turnIndex: n.turnIndex,
-            variantIndex: n.variantIndex,
-            turnId: n.turnId,
-            variantId: n.variantId,
-            isVariant: true,
-            children: (n.children || []).map(toHierarchy),
+            id: "ROOT",
+            role: "root",
+            name: "ROOT",
+            children: (treeState.rootChildren || []).map(toHierarchy),
           };
+        }
+        const n = nodeMap.get(id);
+        if (!n) return { id, name: id, children: [] };
+        return {
+          id: n.id,
+          role: n.role,
+          name: (n.text || n.id).slice(0, 80),
+          turnIndex: n.turnIndex,
+          variantIndex: n.variantIndex,
+          turnId: n.turnId,
+          variantId: n.variantId,
+          isVariant: true,
+          children: (n.children || []).map(toHierarchy),
         };
-        rootData = toHierarchy("ROOT");
-      } else {
-        // Fallback: minimal root if lean not available
-        rootData = { id: "ROOT", role: "root", name: "ROOT", children: [] };
-      }
+      };
+      rootData = toHierarchy("ROOT");
 
       function labelWithVariant(d) {
         return d.name || d.role || d.id;

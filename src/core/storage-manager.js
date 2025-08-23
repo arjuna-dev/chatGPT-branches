@@ -520,7 +520,6 @@ class StorageManager {
         nodeCount: td.nodeCount || (td.nodes ? td.nodes.length : 0),
         nodes: td.nodes || [],
         rootChildren: td.rootChildren || [],
-        isLean: true,
       };
     } catch (e) {
       console.error("Failed to load lean tree:", e);

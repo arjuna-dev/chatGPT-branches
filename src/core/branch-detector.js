@@ -28,6 +28,7 @@ class BranchDetector {
 
         // Store in detected branches map
         this.detectedBranches.set(branchInfo.turnId, branchInfo);
+        console.log("detectedBranches set:", this.detectedBranches);
 
         // Notify callbacks
         this.callbacks.onBranchDetected.forEach((callback) => {
@@ -40,6 +41,7 @@ class BranchDetector {
       }
     });
 
+    console.log("Detected branches:", branches);
     return branches;
   }
 
@@ -69,7 +71,7 @@ class BranchDetector {
     }
 
     // Generate base turn ID (without variant info)
-    const baseTurnId = generateTurnId(turnElement, index);
+    const id = generateTurnId(turnElement, index);
 
     // Classify turn role
     const role = this.classifyTurnRole(turnElement);
@@ -80,7 +82,7 @@ class BranchDetector {
 
     // Create comprehensive branch information for ALL variants
     const branchInfo = {
-      baseTurnId,
+      id,
       turnIndex: index,
       currentVariant: variantInfo.current,
       totalVariants: variantInfo.total,
@@ -89,7 +91,7 @@ class BranchDetector {
       timestamp: Date.now(),
       // Create entries for all variants
       variants: this.createVariantEntries(
-        baseTurnId,
+        id,
         variantInfo,
         preview,
         textHash,
@@ -97,15 +99,17 @@ class BranchDetector {
         index
       ),
       // Mark which variant is currently active
-      activeVariantId: `${baseTurnId}_v${variantInfo.current}`,
+      activeVariantId: `${id}_v${variantInfo.current}`,
     };
+
+    console.log("Detected branch information:", branchInfo);
 
     return branchInfo;
   }
 
   /**
    * Create variant entries for all possible variants of a turn
-   * @param {string} baseTurnId - Base turn ID
+   * @param {string} id - Base turn ID
    * @param {Object} variantInfo - Variant information {current, total}
    * @param {string} currentPreview - Preview text for current variant
    * @param {string} currentTextHash - Text hash for current variant
@@ -114,7 +118,7 @@ class BranchDetector {
    * @returns {Object[]} Array of variant entries
    */
   createVariantEntries(
-    baseTurnId,
+    id,
     variantInfo,
     currentPreview,
     currentTextHash,
@@ -124,12 +128,12 @@ class BranchDetector {
     const variants = [];
 
     for (let i = 1; i <= variantInfo.total; i++) {
-      const variantId = `${baseTurnId}_v${i}`;
+      const variantId = `${id}_v${i}`;
       const isCurrentVariant = i === variantInfo.current;
 
       variants.push({
         id: variantId,
-        turnId: baseTurnId,
+        turnId: id,
         turnIndex: turnIndex,
         variantIndex: i,
         totalVariants: variantInfo.total,

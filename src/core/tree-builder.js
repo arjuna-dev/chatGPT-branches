@@ -77,17 +77,16 @@ class TreeBuilder {
 
     for (const [nodeId, node] of this.nodes) {
       // Skip if we've already processed this turn
-      const baseTurnId = node.turnId || nodeId.split("_v")[0];
-      if (processedTurns.has(baseTurnId)) {
+      const id = node.turnId || nodeId.split("_v")[0];
+      if (processedTurns.has(id)) {
         continue;
       }
 
       // Find all variants for this turn
       const turnVariants = [];
       for (const [variantId, variantNode] of this.nodes) {
-        const variantBaseTurnId =
-          variantNode.turnId || variantId.split("_v")[0];
-        if (variantBaseTurnId === baseTurnId) {
+        const variantId = variantNode.turnId || variantId.split("_v")[0];
+        if (variantId === id) {
           turnVariants.push(variantNode);
         }
       }
@@ -110,12 +109,11 @@ class TreeBuilder {
           // Check if parent is a branching turn
           const parentNode = this.nodes.get(turnVariants[0].parent);
           if (parentNode) {
-            const parentBaseTurnId =
-              parentNode.turnId || parentNode.id.split("_v")[0];
+            const parentId = parentNode.turnId || parentNode.id.split("_v")[0];
             const parentVariants = Array.from(this.nodes.values()).filter(
               (n) => {
-                const nBaseTurnId = n.turnId || n.id.split("_v")[0];
-                return nBaseTurnId === parentBaseTurnId;
+                const nId = n.turnId || n.id.split("_v")[0];
+                return nId === parentId;
               }
             );
 
@@ -135,7 +133,7 @@ class TreeBuilder {
         }
       }
 
-      processedTurns.add(baseTurnId);
+      processedTurns.add(id);
     }
 
     this.rootBranches = rootBranches;
@@ -231,13 +229,9 @@ class TreeBuilder {
     this.clear();
 
     for (const branch of branches) {
-      this.addBranchAsRootNode(branch);
+      const nodeId = branch.id;
+      this.nodes.set(nodeId, branch);
     }
-
-    // All branches are root nodes
-    this.rootBranches = branches.map(
-      (branch) => branch.baseTurnId || branch.turnId
-    );
 
     // Build lean structure before scheduling save so it persists correctly
     try {
@@ -275,6 +269,7 @@ class TreeBuilder {
    * are the variants of the next turn (forming a chain). No duplicate heavy fields.
    */
   buildLeanStructure(branches) {
+    console.log("Building lean structure from branches:", branches);
     const turns = this.groupBranchesByTurn(branches || []);
     const leanNodes = new Map();
     const root = { id: "ROOT", children: [] };
@@ -369,6 +364,7 @@ class TreeBuilder {
     }
 
     this.lean = { root, nodes: leanNodes };
+    console.log("Lean structure built successfully:", this.lean);
   }
 
   /** Return lean state shaped similarly to previous getTreeState for compatibility */
@@ -378,7 +374,6 @@ class TreeBuilder {
       nodeCount: this.lean.nodes.size,
       nodes: Array.from(this.lean.nodes.values()), // plain node objects
       rootChildren: [...this.lean.root.children],
-      isLean: true,
     };
   }
 
@@ -401,11 +396,11 @@ class TreeBuilder {
 
     for (const branch of branches) {
       const turnIndex = branch.turnIndex;
-      const baseTurnId = branch.baseTurnId || branch.turnId;
+      const id = branch.id || branch.turnId;
 
       if (!turnMap.has(turnIndex)) {
         turnMap.set(turnIndex, {
-          turnId: baseTurnId,
+          turnId: id,
           turnIndex: turnIndex,
           role: branch.role,
           variants: [],
@@ -424,7 +419,7 @@ class TreeBuilder {
       } else {
         // Fallback: create single variant
         turn.variants.push({
-          id: `${baseTurnId}_v${branch.currentVariant || 1}`,
+          id: `${id}_v${branch.currentVariant || 1}`,
           variantIndex: branch.currentVariant || 1,
           preview: branch.preview || "",
           textHash: branch.textHash,
@@ -437,39 +432,6 @@ class TreeBuilder {
     return Array.from(turnMap.values()).sort(
       (a, b) => a.turnIndex - b.turnIndex
     );
-  }
-
-  /**
-   * Add a branch as an independent root node
-   * @param {Object} branchData - Branch data from BranchDetector
-   */
-  addBranchAsRootNode(branchData) {
-    const nodeId = branchData.baseTurnId || branchData.turnId;
-
-    // Create branch node as root
-    const branchNode = {
-      id: nodeId,
-      type: "branch",
-      turnId: nodeId,
-      turnIndex: branchData.turnIndex,
-      role: branchData.role,
-      variants: branchData.variants || [],
-      currentVariant: branchData.currentVariant,
-      totalVariants: branchData.totalVariants,
-      children: [], // Sub-branches (for future hierarchical support)
-      parent: null, // Root nodes have no parent
-      isRoot: true, // Mark as root
-      depth: 0,
-      timestamp: branchData.timestamp,
-      element: branchData.element,
-      // New branches property for hierarchical tree structure
-      branches: this.createBranchesFromVariants(
-        branchData.variants || [],
-        branchData
-      ),
-    };
-
-    this.nodes.set(nodeId, branchNode);
   }
 
   /**
@@ -763,29 +725,11 @@ class TreeBuilder {
       const storedLean = await extensionState.storageManager?.loadLeanTree(
         conversationId
       );
-      if (!storedLean) return this.getLeanState();
-      // Merge: union nodes by id
-      if (!this.lean) return storedLean;
-      const byId = new Map();
-      for (const n of storedLean.nodes || []) byId.set(n.id, n);
-      for (const n of this.lean.nodes.values()) {
-        if (!byId.has(n.id)) byId.set(n.id, n);
-      }
-      const rootChildren = Array.from(
-        new Set([
-          ...(storedLean.rootChildren || []),
-          ...this.lean.root.children,
-        ])
-      );
-      return {
-        nodeCount: byId.size,
-        nodes: Array.from(byId.values()),
-        rootChildren,
-        isComprehensive: true,
-      };
+      console.log("Loaded stored lean tree:", storedLean);
+      return storedLean;
     } catch (e) {
-      console.warn("Lean comprehensive retrieval fallback:", e);
-      return this.getLeanState();
+      console.error("Lean comprehensive retrieval fallback:", e);
+      // return this.getLeanState();
     }
   }
 
