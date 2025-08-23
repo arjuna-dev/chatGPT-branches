@@ -1065,7 +1065,7 @@ class SimpleUIManager {
         .cb-tree-node circle.inactive { opacity:.45; }
         .cb-tree-link { fill:none; stroke:rgba(255,255,255,0.2); stroke-width:1.5px; }
         .cb-tree-link.highlight { stroke:#60a5fa; stroke-width:2px; }
-        .cb-tree-label { pointer-events:none; font-weight:600; fill:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+        .cb-tree-label { pointer-events:none; font-weight:600; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6); }
         .cb-tree-badge { font-size:10px; font-weight:500; fill:#e5e7eb; }
         .cb-tree-tooltip { position:absolute; pointer-events:none; background:rgba(0,0,0,.85); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px; line-height:1.3; max-width:240px; box-shadow:0 4px 16px rgba(0,0,0,.4); backdrop-filter:blur(6px); }
         .cb-tree-controls { position:absolute; top:8px; right:8px; display:flex; gap:6px; z-index:10; }
@@ -1234,7 +1234,8 @@ class SimpleUIManager {
       rootData = toHierarchy("ROOT");
 
       function labelWithVariant(d) {
-        return d.name || d.role || d.id;
+        const raw = d.name || d.role || d.id || "";
+        return raw.length > 40 ? raw.slice(0, 40).trimEnd() + "…" : raw;
       }
 
       const data = rootData;
@@ -1345,17 +1346,35 @@ class SimpleUIManager {
           tooltip.style.display = "none";
         });
 
+      // Multiline / wrapped labels using foreignObject (HTML) for easier wrapping
+      const LABEL_WIDTH = 110; // width in px before wrapping (right-side label)
+      const MAX_LINES = 4; // cap lines to avoid huge boxes
+      const LINE_HEIGHT = 1.25; // em
+      const LABEL_HEIGHT = Math.round(MAX_LINES * 14 * LINE_HEIGHT + 8);
       node
-        .append("text")
+        .append("foreignObject")
+        .attr("x", 16) // to right of circle (r=10 + padding)
+        .attr("y", -LABEL_HEIGHT / 2) // vertically center beside node
+        .attr("width", LABEL_WIDTH)
+        .attr("height", LABEL_HEIGHT)
+        .append("xhtml:div")
         .attr("class", "cb-tree-label")
-        .attr("dy", "0.31em")
-        .attr("x", (d) => (d.children && !d.data.isVariant ? -14 : 14))
-        .attr("text-anchor", (d) =>
-          d.children && !d.data.isVariant ? "end" : "start"
-        )
-        .text((d) => labelWithVariant(d.data))
-        .attr("stroke", "rgba(0,0,0,0.55)")
-        .attr("paint-order", "stroke");
+        .style("width", LABEL_WIDTH + "px")
+        .style("font-size", "11px")
+        .style("line-height", LINE_HEIGHT)
+        .style("font-weight", "600")
+        .style("text-align", "left")
+        .style("word-break", "break-word")
+        .style("overflow", "hidden")
+        // Vertical centering with flexbox (replaces line-clamp approach)
+        .style("display", "flex")
+        .style("flex-direction", "column")
+        .style("justify-content", "center")
+        .style("height", "100%")
+        .style("padding", "2px 4px 0")
+        .style("border-radius", "4px")
+        .style("background", "rgba(0,0,0,0.25)")
+        .text((d) => labelWithVariant(d.data));
 
       // Controls repurposed
       const refit = () => {
