@@ -1245,7 +1245,7 @@ class SimpleUIManager {
           d3.ascending(a.data.name, b.data.name)
       );
       const width = Math.max(928, container.clientWidth - 10);
-      const dx = 24; // vertical separation between siblings
+      const dx = 60; // vertical separation between siblings
       const dy = 140; // horizontal distance per depth; will override using width/(root.height+1) optional
       const treeLayout = d3.tree().nodeSize([dx, dy]);
       treeLayout(root);
