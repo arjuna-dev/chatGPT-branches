@@ -7,6 +7,7 @@ class TreeBuilder {
     this.nodes = new Map(); // nodeId -> BranchNode
     this.currentPath = []; // [nodeId1, nodeId2, ...] - active conversation path
     this.rootBranches = []; // [nodeId1, nodeId2, ...] - top-level branch points
+    this.lean = null; // current lean structure
   }
 
   /**
@@ -240,6 +241,27 @@ class TreeBuilder {
       console.warn("Failed to build lean structure:", e);
     }
 
+    // Load stored lean tree and merge (variantId uniqueness) asynchronously
+    if (
+      typeof extensionState !== "undefined" &&
+      extensionState?.conversationId &&
+      extensionState.storageManager
+    ) {
+      const convId = extensionState.conversationId;
+      extensionState.storageManager.loadLeanTree(convId).then((storedLean) => {
+        if (!storedLean || !storedLean.nodes) return;
+        try {
+          this.mergeStoredLeanWithCurrent(storedLean);
+          this.saveToComprehensiveStorage(convId).catch((err) =>
+            console.error("Failed to save merged lean tree", err)
+          );
+          this.notifyTreeUpdated();
+        } catch (err) {
+          console.warn("VariantId merge failed", err);
+        }
+      });
+    }
+
     // Save to comprehensive storage (async, non-blocking)
     if (
       typeof extensionState !== "undefined" &&
@@ -258,6 +280,140 @@ class TreeBuilder {
     this.notifyTreeUpdated();
   }
 
+  /** Merge stored lean (array form) into current lean using variantId as unique key */
+  mergeStoredLeanWithCurrent(storedLean) {
+    if (!this.lean || !this.lean.nodes) return;
+    const currentMap = this.lean.nodes; // Map id->node (id will become variantId)
+    const byVariant = new Map();
+    const storedTurnIds = new Set();
+
+    // Track variants per turn for stored & incoming
+    const storedVariantsByTurn = new Map(); // turnId -> [nodes]
+    const incomingVariantsByTurn = new Map(); // turnId -> [nodes]
+
+    const normalizeNode = (n) => {
+      // Ensure variantId present
+      const vid = n.variantId || n.id;
+      return { ...n, id: vid, variantId: vid };
+    };
+
+    // Seed with stored nodes (normalize old text-based ids)
+    for (const sn of storedLean.nodes || []) {
+      const node = normalizeNode(sn);
+      if (!byVariant.has(node.variantId)) byVariant.set(node.variantId, node);
+      if (node.turnId) {
+        storedTurnIds.add(node.turnId);
+        if (!storedVariantsByTurn.has(node.turnId))
+          storedVariantsByTurn.set(node.turnId, []);
+        storedVariantsByTurn.get(node.turnId).push(node);
+      }
+    }
+    // Merge current nodes
+    for (const node of currentMap.values()) {
+      const cur = normalizeNode(node);
+      if (cur.turnId) {
+        if (!incomingVariantsByTurn.has(cur.turnId))
+          incomingVariantsByTurn.set(cur.turnId, []);
+        incomingVariantsByTurn.get(cur.turnId).push(cur);
+      }
+    }
+
+    // For each incoming turnId, decide which variants to include
+    for (const [turnId, variants] of incomingVariantsByTurn.entries()) {
+      const isNewTurn = !storedTurnIds.has(turnId);
+      // If it's a brand-new turn (not previously stored), only add active or discovered variants.
+      const filtered = isNewTurn
+        ? variants.filter((v) => v.isActive || v.isDiscovered)
+        : variants;
+      for (const cur of filtered) {
+        const existing = byVariant.get(cur.variantId);
+        if (!existing) {
+          byVariant.set(cur.variantId, cur);
+        } else {
+          if (!existing.isDiscovered && cur.isDiscovered) {
+            byVariant.set(cur.variantId, {
+              ...existing,
+              ...cur,
+              isDiscovered: true,
+            });
+          } else if (existing.isDiscovered && !cur.isDiscovered) {
+            // keep existing
+          } else if (!existing.isDiscovered && !cur.isDiscovered) {
+            // keep earlier
+          } else {
+            if ((cur.timestamp || 0) > (existing.timestamp || 0)) {
+              byVariant.set(cur.variantId, { ...existing, ...cur });
+            }
+          }
+        }
+      }
+    }
+
+    // Consolidate duplicates across different turnIds for same (turnIndex, variantIndex)
+    const nodesArrRaw = Array.from(byVariant.values());
+    const pickMap = new Map(); // key: ti:vi -> node
+    const isPlaceholder = (txt) => {
+      if (txt == null) return true;
+      const t = String(txt).trim();
+      if (!t) return true;
+      if (/^[0-9]{1,3}$/.test(t)) return true;
+      if (t.length <= 3) return true;
+      return false;
+    };
+    for (const n of nodesArrRaw) {
+      const key = `${n.turnIndex || 0}:${n.variantIndex || 0}`;
+      const existing = pickMap.get(key);
+      if (!existing) {
+        pickMap.set(key, n);
+        continue;
+      }
+      // Decide replacement rules
+      const ePh = isPlaceholder(existing.text);
+      const nPh = isPlaceholder(n.text);
+      const eDisc = !!existing.isDiscovered;
+      const nDisc = !!n.isDiscovered;
+      let takeNew = false;
+      if (!eDisc && nDisc) takeNew = true;
+      else if (eDisc && !nDisc) takeNew = false;
+      else if (ePh && !nPh) takeNew = true;
+      else if (!ePh && nPh) takeNew = false;
+      else if ((n.timestamp || 0) > (existing.timestamp || 0)) takeNew = true;
+      if (takeNew) pickMap.set(key, { ...existing, ...n });
+    }
+    const nodesArr = Array.from(pickMap.values());
+    const turnGroups = new Map(); // turnIndex -> [variants]
+    for (const n of nodesArr) {
+      n.children = [];
+      n.parentId = null;
+      const ti = n.turnIndex || 0;
+      if (!turnGroups.has(ti)) turnGroups.set(ti, []);
+      turnGroups.get(ti).push(n);
+    }
+    const orderedTurnIndexes = Array.from(turnGroups.keys()).sort(
+      (a, b) => a - b
+    );
+    const root = { id: "ROOT", children: [] };
+    let prevActive = null;
+    for (let i = 0; i < orderedTurnIndexes.length; i++) {
+      const group = turnGroups.get(orderedTurnIndexes[i]);
+      if (i === 0) {
+        for (const n of group) {
+          n.parentId = root.id;
+          root.children.push(n.id);
+        }
+      } else if (prevActive) {
+        for (const n of group) {
+          n.parentId = prevActive.id;
+          prevActive.children.push(n.id);
+        }
+      }
+      prevActive = group.find((n) => n.isActive) || group[0];
+    }
+    const newMap = new Map();
+    for (const n of nodesArr) newMap.set(n.id, n);
+    this.lean = { root, nodes: newMap };
+  }
+
   /**
    * Build a lean in-memory structure: variant-only chain.
    * Schema:
@@ -269,106 +425,128 @@ class TreeBuilder {
    * are the variants of the next turn (forming a chain). No duplicate heavy fields.
    */
   buildLeanStructure(branches) {
-    console.log("Building lean structure from branches:", branches);
+    const priorMap =
+      this.lean?.nodes instanceof Map ? this.lean.nodes : new Map();
     const turns = this.groupBranchesByTurn(branches || []);
-    const leanNodes = new Map();
-    const root = { id: "ROOT", children: [] };
-    let prevTurnVariantNodes = [];
-    let prevTurnMeta = null;
+    const variantMap = new Map(); // variantId -> node
+    const placeholder = (txt) => {
+      if (txt == null) return true;
+      const t = String(txt).trim();
+      if (!t) return true;
+      if (/^[0-9]{1,3}$/.test(t)) return true;
+      if (t.length <= 3) return true;
+      return false;
+    };
 
-    const safeText = (s) => {
+    const safe = (s) => {
       if (s == null) return "";
       if (typeof s === "string") return s.replace(/\s+/g, " ").trim();
-      if (Array.isArray(s))
-        return s
-          .map((x) => safeText(x))
-          .join(" ")
-          .trim();
-      if (typeof s === "object") {
-        if (typeof s.text === "string") return safeText(s.text);
-        try {
-          return JSON.stringify(s).replace(/\s+/g, " ").trim();
-        } catch (e) {
-          return String(s).replace(/\s+/g, " ").trim();
-        }
-      }
       return String(s).replace(/\s+/g, " ").trim();
     };
 
-    for (let i = 0; i < turns.length; i++) {
-      const t = turns[i];
-      const variants = t.variants || [];
-      if (!variants.length) continue;
-      const variantNodes = variants
-        .filter((v) => v)
-        .map((v) => {
-          const rawLabel = v.userPrompt || v.preview || v.id || v.variantId;
-          const text = safeText(rawLabel);
-          const idBase = text || String(v.id || v.variantId || Math.random());
-          // Ensure uniqueness by appending deterministic suffix if collision
-          let candidate = idBase;
-          let n = 1;
-          while (leanNodes.has(candidate)) {
-            // If the existing node matches the same turn + variant index, reuse it
-            const existing = leanNodes.get(candidate);
-            if (
-              existing &&
-              existing.turnIndex === t.turnIndex &&
-              existing.variantIndex === v.variantIndex &&
-              existing.turnId === t.turnId
-            ) {
-              return existing;
-            }
-            n += 1;
-            candidate = idBase + "#" + n;
+    const perTurn = [];
+    const dedupePerTurn = new Map(); // turnIndex -> variantIndex -> node
+    for (const turn of turns) {
+      const list = [];
+      for (const v of turn.variants || []) {
+        if (!v || !v.id) continue;
+        const vid = v.id; // stable variant id
+        const text = safe(v.preview || v.userPrompt || v.id);
+        const existing = priorMap.get(vid);
+        let node;
+        if (existing) {
+          // Upgrade discovery if new variant now has meaningful text
+          const upgraded =
+            (!existing.isDiscovered && v.isDiscovered) ||
+            (existing.isDiscovered &&
+              v.isDiscovered &&
+              !placeholder(text) &&
+              placeholder(existing.text));
+          if (upgraded) {
+            existing.text = text;
+            existing.textHash = v.textHash || existing.textHash;
+            existing.isDiscovered = true;
           }
-          const node = {
-            id: candidate, // user prompt derived unique id
-            role: t.role,
+          existing.isActive = !!v.isActive;
+          existing.timestamp = v.timestamp || existing.timestamp;
+          existing.turnIndex = turn.turnIndex;
+          existing.variantIndex = v.variantIndex;
+          existing.role = turn.role;
+          node = existing;
+        } else {
+          node = {
+            id: vid,
+            variantId: vid,
+            role: turn.role,
             text,
-            turnIndex: t.turnIndex,
+            turnIndex: turn.turnIndex,
             variantIndex: v.variantIndex,
-            turnId: t.turnId, // original turn identifier (for navigation)
-            variantId: v.id, // original variant id if needed
+            turnId: turn.turnId || turn.id,
             children: [],
-            isDiscovered: v.isDiscovered || false,
-            isActive: v.isActive || false,
+            parentId: null,
+            isDiscovered: !!v.isDiscovered && !placeholder(text),
+            isActive: !!v.isActive,
             textHash: v.textHash || null,
             timestamp: v.timestamp,
           };
-          leanNodes.set(candidate, node);
-          return node;
-        });
-      if (i === 0 || prevTurnVariantNodes.length === 0) {
-        // First turn variants become root children
-        for (const vn of variantNodes) {
-          vn.parentId = root.id;
-          if (!root.children.includes(vn.id)) root.children.push(vn.id);
         }
-      } else {
-        // Choose a single parent (active variant of previous turn if available, else first)
-        let parentNode = null;
-        if (prevTurnMeta && prevTurnMeta.activeVariantIndex != null) {
-          parentNode = prevTurnVariantNodes.find(
-            (n) => n.variantIndex === prevTurnMeta.activeVariantIndex
-          );
-        }
-        if (!parentNode) parentNode = prevTurnVariantNodes[0];
-        if (parentNode) {
-          for (const vn of variantNodes) {
-            vn.parentId = parentNode.id;
-            if (!parentNode.children.includes(vn.id)) {
-              parentNode.children.push(vn.id);
-            }
+        // Consolidate by (turnIndex, variantIndex) possibly across differing turnIds
+        const key = `${turn.turnIndex}:${v.variantIndex}`;
+        let chosen = dedupePerTurn.get(key);
+        if (!chosen) {
+          dedupePerTurn.set(key, node);
+          variantMap.set(vid, node);
+          list.push(node);
+        } else {
+          // Decide upgrade rules between chosen and node
+          const chosenPh = placeholder(chosen.text);
+          const nodePh = placeholder(node.text);
+          const chosenDisc = !!chosen.isDiscovered;
+          const nodeDisc = !!node.isDiscovered;
+          let takeNode = false;
+          if (!chosenDisc && nodeDisc) takeNode = true;
+          else if (chosenDisc && !nodeDisc) takeNode = false;
+          else if (chosenPh && !nodePh) takeNode = true;
+          else if (!chosenPh && nodePh) takeNode = false;
+          else if ((node.timestamp || 0) > (chosen.timestamp || 0))
+            takeNode = true;
+          if (takeNode) {
+            // Replace chosen
+            dedupePerTurn.set(key, node);
+            // Remove old from list & variantMap
+            const idx = list.indexOf(chosen);
+            if (idx >= 0) list.splice(idx, 1, node);
+            else list.push(node);
+            variantMap.delete(chosen.id);
+            variantMap.set(vid, node);
           }
         }
       }
-      prevTurnVariantNodes = variantNodes;
-      prevTurnMeta = t;
+      if (list.length)
+        perTurn.push({ turnIndex: turn.turnIndex, variants: list });
     }
 
-    this.lean = { root, nodes: leanNodes };
-    console.log("Lean structure built successfully:", this.lean);
+    // Rebuild hierarchy
+    perTurn.sort((a, b) => a.turnIndex - b.turnIndex);
+    const root = { id: "ROOT", children: [] };
+    let prevActive = null;
+    for (let i = 0; i < perTurn.length; i++) {
+      const group = perTurn[i].variants;
+      if (i === 0) {
+        for (const n of group) {
+          n.parentId = root.id;
+          root.children.push(n.id);
+        }
+      } else if (prevActive) {
+        for (const n of group) {
+          n.parentId = prevActive.id;
+          prevActive.children.push(n.id);
+        }
+      }
+      prevActive = group.find((n) => n.isActive) || group[0];
+    }
+
+    this.lean = { root, nodes: variantMap };
   }
 
   /** Return lean state shaped similarly to previous getTreeState for compatibility */
