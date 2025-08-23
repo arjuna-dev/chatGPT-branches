@@ -1058,13 +1058,14 @@ class SimpleUIManager {
       style.textContent = `
         .cb-tree-wrapper { position:relative; width:100%; height:100%; min-height:560px; }
         .cb-tree-svg { font:11px/1.2 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; }
-        .cb-tree-node circle { stroke:#fff; stroke-width:2px; cursor:pointer; }
+  .cb-tree-node circle { stroke:#fff; stroke-width:2px; cursor:pointer; }
+  .cb-tree-node circle.cb-hit-area { stroke:none !important; stroke-width:0 !important; fill:transparent !important; }
         .cb-tree-node circle.user { fill:#34d399; }
         .cb-tree-node circle.assistant { fill:#4f8ef7; }
         .cb-tree-node circle.root { fill:#6b7280; }
         .cb-tree-node circle.inactive { opacity:.45; }
-        .cb-tree-link { fill:none; stroke:rgba(255,255,255,0.2); stroke-width:1.5px; }
-        .cb-tree-link.highlight { stroke:#60a5fa; stroke-width:2px; }
+  .cb-tree-link { fill:none; stroke:rgba(190,210,255,0.55); stroke-width:1.8px; stroke-linecap:round; transition:stroke .18s, stroke-width .18s, stroke-opacity .18s; pointer-events:none; }
+        .cb-tree-link.highlight { stroke:#60a5fa; stroke-width:2.4px; stroke-opacity:0.95; filter:drop-shadow(0 0 4px rgba(96,165,250,0.55)); }
         .cb-tree-label { pointer-events:none; font-weight:600; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6); }
         .cb-tree-badge { font-size:10px; font-weight:500; fill:#e5e7eb; }
         .cb-tree-tooltip { position:absolute; pointer-events:none; background:rgba(0,0,0,.85); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px; line-height:1.3; max-width:240px; box-shadow:0 4px 16px rgba(0,0,0,.4); backdrop-filter:blur(6px); }
@@ -1246,7 +1247,7 @@ class SimpleUIManager {
           d3.ascending(a.data.name, b.data.name)
       );
       const width = Math.max(928, container.clientWidth - 10);
-      const dx = 60; // vertical separation between siblings
+      const dx = 90; // vertical separation between siblings (increased)
       const dy = 140; // horizontal distance per depth; will override using width/(root.height+1) optional
       const treeLayout = d3.tree().nodeSize([dx, dy]);
       treeLayout(root);
@@ -1280,16 +1281,17 @@ class SimpleUIManager {
       const gLinks = svg
         .append("g")
         .attr("fill", "none")
-        .attr("stroke", "#555")
-        .attr("stroke-opacity", 0.35)
-        .attr("stroke-width", 1.5);
+        .attr("stroke", "rgba(190,210,255,0.55)")
+        .attr("stroke-opacity", 1)
+        .attr("stroke-width", 1.8)
+        .attr("stroke-linecap", "round");
       const gNodes = svg
         .append("g")
         .attr("stroke-linejoin", "round")
         .attr("stroke-width", 2);
 
       // Links
-      gLinks
+      const linkPaths = gLinks
         .selectAll("path")
         .data(root.links())
         .join("path")
@@ -1337,6 +1339,14 @@ class SimpleUIManager {
           tooltip.style.display = "block";
           tooltip.style.left = event.pageX + 16 + "px";
           tooltip.style.top = event.pageY + 16 + "px";
+          // Highlight ancestor path links
+          const ancestors = new Set();
+          let cur = d;
+          while (cur.parent) {
+            ancestors.add(cur);
+            cur = cur.parent;
+          }
+          linkPaths.classed("highlight", (l) => ancestors.has(l.target));
         })
         .on("mousemove", (event) => {
           tooltip.style.left = event.pageX + 16 + "px";
@@ -1344,17 +1354,18 @@ class SimpleUIManager {
         })
         .on("mouseleave", () => {
           tooltip.style.display = "none";
+          linkPaths.classed("highlight", false);
         });
 
       // Multiline / wrapped labels using foreignObject (HTML) for easier wrapping
-      const LABEL_WIDTH = 110; // width in px before wrapping (right-side label)
+      const LABEL_WIDTH = 140; // width in px before wrapping (below-node label)
       const MAX_LINES = 4; // cap lines to avoid huge boxes
       const LINE_HEIGHT = 1.25; // em
       const LABEL_HEIGHT = Math.round(MAX_LINES * 14 * LINE_HEIGHT + 8);
       node
         .append("foreignObject")
-        .attr("x", 16) // to right of circle (r=10 + padding)
-        .attr("y", -LABEL_HEIGHT / 2) // vertically center beside node
+        .attr("x", -LABEL_WIDTH / 2) // center under node
+        .attr("y", 12) // very close below circle
         .attr("width", LABEL_WIDTH)
         .attr("height", LABEL_HEIGHT)
         .append("xhtml:div")
@@ -1363,18 +1374,32 @@ class SimpleUIManager {
         .style("font-size", "11px")
         .style("line-height", LINE_HEIGHT)
         .style("font-weight", "600")
-        .style("text-align", "left")
+        .style("text-align", "center")
         .style("word-break", "break-word")
         .style("overflow", "hidden")
-        // Vertical centering with flexbox (replaces line-clamp approach)
-        .style("display", "flex")
-        .style("flex-direction", "column")
-        .style("justify-content", "center")
-        .style("height", "100%")
-        .style("padding", "2px 4px 0")
-        .style("border-radius", "4px")
-        .style("background", "rgba(0,0,0,0.25)")
+        .style("display", "block")
+        .style("pointer-events", "none")
+        .style("padding", "0")
+        .style("border-radius", "0")
+        .style("background", "transparent")
         .text((d) => labelWithVariant(d.data));
+
+      // Add a larger invisible hit area behind each node to improve clickability
+      node
+        .insert("circle", ":first-child")
+        .attr("class", "cb-hit-area")
+        .attr("r", 16)
+        .attr("fill", "transparent")
+        .style("cursor", "pointer")
+        .on("click", (event, d) => {
+          event.stopPropagation();
+          const variantIndex = d.data.variantIndex || 1;
+          const navId = d.data.turnId || d.data.id;
+          this.navigateToVariantFromTree(
+            { ...d.data, id: navId },
+            variantIndex
+          );
+        });
 
       // Controls repurposed
       const refit = () => {
