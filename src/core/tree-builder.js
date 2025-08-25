@@ -4,15 +4,15 @@
 
 class TreeBuilder {
   constructor() {
-    this.nodes = new Map(); // nodeId -> BranchNode
+    this.nodes = new Map(); // nodeId -> NodeNode
     this.currentPath = []; // [nodeId1, nodeId2, ...] - active conversation path
-    this.rootBranches = []; // [nodeId1, nodeId2, ...] - top-level branch points
+    this.rootNodes = []; // [nodeId1, nodeId2, ...] - top-level node points
     this.lean = null; // current lean structure
   }
 
   /**
    * Add a node to the tree
-   * @param {Object} nodeData - Branch node data from BranchDetector
+   * @param {Object} nodeData - Node node data from NodeDetector
    * @returns {string} The node ID
    */
   addNode(nodeData) {
@@ -26,9 +26,9 @@ class TreeBuilder {
       parent: null,
       isRoot: false,
       depth: 0,
-      // Add branches property for hierarchical structure
-      branches: nodeData.variants
-        ? this.createBranchesFromVariants(nodeData.variants, nodeData)
+      // Add nodes property for hierarchical structure
+      nodes: nodeData.variants
+        ? this.createNodesFromVariants(nodeData.variants, nodeData)
         : [],
     };
 
@@ -69,11 +69,11 @@ class TreeBuilder {
   }
 
   /**
-   * Find and identify root branches (top-level branch points)
-   * @returns {string[]} Array of root branch node IDs
+   * Find and identify root nodes (top-level node points)
+   * @returns {string[]} Array of root node node IDs
    */
-  findRootBranches() {
-    const rootBranches = [];
+  findRootNodes() {
+    const rootNodes = [];
     const processedTurns = new Set();
 
     for (const [nodeId, node] of this.nodes) {
@@ -92,22 +92,22 @@ class TreeBuilder {
         }
       }
 
-      // Check if this turn has multiple variants (is a branch point)
+      // Check if this turn has multiple variants (is a node point)
       if (
         turnVariants.length > 1 ||
         (turnVariants.length === 1 && turnVariants[0].totalVariants > 1)
       ) {
-        // Check if it's a root branch (no parent or parent is not a branch)
+        // Check if it's a root node (no parent or parent is not a node)
         const hasParent = turnVariants.some((variant) => variant.parent);
 
         if (!hasParent) {
-          // This is a root branch - add all its variants
+          // This is a root node - add all its variants
           for (const variant of turnVariants) {
-            rootBranches.push(variant.id);
+            rootNodes.push(variant.id);
             variant.isRoot = true;
           }
         } else {
-          // Check if parent is a branching turn
+          // Check if parent is a nodeing turn
           const parentNode = this.nodes.get(turnVariants[0].parent);
           if (parentNode) {
             const parentId = parentNode.turnId || parentNode.id.split("_v")[0];
@@ -118,14 +118,14 @@ class TreeBuilder {
               }
             );
 
-            // If parent is not a branch, this is effectively a root branch
+            // If parent is not a node, this is effectively a root node
             if (
               parentVariants.length === 1 &&
               parentVariants[0].totalVariants === 1
             ) {
               for (const variant of turnVariants) {
-                if (!rootBranches.includes(variant.id)) {
-                  rootBranches.push(variant.id);
+                if (!rootNodes.includes(variant.id)) {
+                  rootNodes.push(variant.id);
                   variant.isRoot = true;
                 }
               }
@@ -137,8 +137,8 @@ class TreeBuilder {
       processedTurns.add(id);
     }
 
-    this.rootBranches = rootBranches;
-    return this.rootBranches;
+    this.rootNodes = rootNodes;
+    return this.rootNodes;
   }
   /**
    * Get all variants of a specific turn (siblings in the tree)
@@ -153,7 +153,7 @@ class TreeBuilder {
 
     // If it has a parent, get all children of that parent at the same turn index
     if (node.parent) {
-      const siblings = this.getSubBranches(node.parent);
+      const siblings = this.getSubNodes(node.parent);
       for (const siblingId of siblings) {
         const sibling = this.nodes.get(siblingId);
         if (sibling && sibling.turnIndex === node.turnIndex) {
@@ -222,21 +222,23 @@ class TreeBuilder {
   }
 
   /**
-   * Build tree structure from detected branches
-   * @param {Object[]} branches - Array of branch data from BranchDetector
+   * Build tree structure from detected nodes
+   * @param {Object[]} nodes - Array of node data from NodeDetector
    */
-  buildFromBranches(branches) {
+  buildFromNodes(nodes) {
     // Clear existing tree
     this.clear();
 
-    for (const branch of branches) {
-      const nodeId = branch.id;
-      this.nodes.set(nodeId, branch);
+    console.log("Snapshot:", this.buildCurrentTreeSnapshot(nodes));
+
+    for (const node of nodes) {
+      const nodeId = node.id;
+      this.nodes.set(nodeId, node);
     }
 
     // Build lean structure before scheduling save so it persists correctly
     try {
-      this.buildLeanStructure(branches);
+      this.buildLeanStructure(nodes);
     } catch (e) {
       console.warn("Failed to build lean structure:", e);
     }
@@ -424,10 +426,10 @@ class TreeBuilder {
    * Each turn's variants become sibling nodes. Children of the active variant of a turn
    * are the variants of the next turn (forming a chain). No duplicate heavy fields.
    */
-  buildLeanStructure(branches) {
+  buildLeanStructure(nodes) {
     const priorMap =
       this.lean?.nodes instanceof Map ? this.lean.nodes : new Map();
-    const turns = this.groupBranchesByTurn(branches || []);
+    const turns = this.groupNodesByTurn(nodes || []);
     const variantMap = new Map(); // variantId -> node
     const placeholder = (txt) => {
       if (txt == null) return true;
@@ -569,42 +571,42 @@ class TreeBuilder {
   }
 
   /**
-   * Group detected branches by conversation turn
-   * @param {Object[]} branches - Array of branch data
+   * Group detected nodes by conversation turn
+   * @param {Object[]} nodes - Array of node data
    * @returns {Object[]} Array of conversation turn objects
    */
-  groupBranchesByTurn(branches) {
+  groupNodesByTurn(nodes) {
     const turnMap = new Map();
 
-    for (const branch of branches) {
-      const turnIndex = branch.turnIndex;
-      const id = branch.id || branch.turnId;
+    for (const node of nodes) {
+      const turnIndex = node.turnIndex;
+      const id = node.id || node.turnId;
 
       if (!turnMap.has(turnIndex)) {
         turnMap.set(turnIndex, {
           turnId: id,
           turnIndex: turnIndex,
-          role: branch.role,
+          role: node.role,
           variants: [],
-          activeVariantIndex: branch.currentVariant || 1,
-          totalVariants: branch.totalVariants || 1,
-          element: branch.element,
-          timestamp: branch.timestamp,
+          activeVariantIndex: node.currentVariant || 1,
+          totalVariants: node.totalVariants || 1,
+          element: node.element,
+          timestamp: node.timestamp,
         });
       }
 
       const turn = turnMap.get(turnIndex);
 
-      // Add variants from the comprehensive branch data
-      if (branch.variants && Array.isArray(branch.variants)) {
-        turn.variants = branch.variants;
+      // Add variants from the comprehensive node data
+      if (node.variants && Array.isArray(node.variants)) {
+        turn.variants = node.variants;
       } else {
         // Fallback: create single variant
         turn.variants.push({
-          id: `${id}_v${branch.currentVariant || 1}`,
-          variantIndex: branch.currentVariant || 1,
-          preview: branch.preview || "",
-          textHash: branch.textHash,
+          id: `${id}_v${node.currentVariant || 1}`,
+          variantIndex: node.currentVariant || 1,
+          preview: node.preview || "",
+          textHash: node.textHash,
           isActive: true,
         });
       }
@@ -620,42 +622,54 @@ class TreeBuilder {
    * Return current snapshot of the tree.
    * Shape of each returned node: { name: string, children: [] }
    * Naming rule: if variant.isActive === true use variant.preview (stringified), else '-'.
-   * @param {Object[]} branches - Array of branch objects (each with turnIndex, variants[])
-   * @returns {Array<{name:string, children:[]}>}
+   * Adds index property: for root-level nodes (first turn) index = turnIndex; for deeper levels index = variantIndex.
+   * @param {Object[]} nodes - Array of node objects (each with turnIndex, variants[])
+   * @returns {Array<{name:string, index:number, children:[]}>}
    */
-  buildCurrentTreeSnapshot(branches) {
-    if (!Array.isArray(branches) || branches.length === 0) return [];
+  buildCurrentTreeSnapshot(nodes) {
+    if (!Array.isArray(nodes) || nodes.length === 0) return [];
 
-    // 1. Collect & sort unique turnIndex values
-    const turnIndexes = Array.from(
-      new Set(
-        branches
-          .map((b) => (typeof b?.turnIndex === "number" ? b.turnIndex : null))
-          .filter((v) => v !== null)
-      )
-    ).sort((a, b) => a - b);
-    if (turnIndexes.length === 0) return [];
+    // 1. Collect & sort turnIndex values (assume unique, log error if not)
+    const rawTurnIndexes = nodes
+      .map((b) => (typeof b?.turnIndex === "number" ? b.turnIndex : null))
+      .filter((v) => v !== null);
 
-    // Map turnIndex -> branch objects (there might be >1 though usually 1)
-    const byTurn = new Map();
-    for (const b of branches) {
-      if (typeof b?.turnIndex !== "number") continue;
-      if (!byTurn.has(b.turnIndex)) byTurn.set(b.turnIndex, []);
-      byTurn.get(b.turnIndex).push(b);
+    const turnIndexes = rawTurnIndexes.sort((a, b) => a - b);
+
+    // Check for duplicates and log error if found
+    const uniqueSet = new Set(turnIndexes);
+    if (uniqueSet.size !== turnIndexes.length) {
+      console.error(
+        "Error: Duplicate turnIndex values found in nodes:",
+        turnIndexes
+      );
     }
 
-    const rootNodes = [];
+    if (turnIndexes.length === 0) return [];
+
+    console.log("Turn indexes in snapshot:", turnIndexes);
+
+    // Map turnIndex -> node objects (there might be >1 though usually 1)
+    const nodesMappedToTurn = new Map();
+    for (const b of nodes) {
+      if (!nodesMappedToTurn.has(b.turnIndex)) {
+        nodesMappedToTurn.set(b.turnIndex, []);
+      }
+      nodesMappedToTurn.get(b.turnIndex).push(b);
+    }
+
+    const tree = [];
     /** Keep reference to the active node structure for each turnIndex */
     const activeNodeByTurn = new Map();
 
     // 2. Iterate N passes (each turnIndex)
     for (let i = 0; i < turnIndexes.length; i++) {
       const ti = turnIndexes[i];
-      const turnBranches = byTurn.get(ti) || [];
+      const turnNodes = nodesMappedToTurn.get(ti);
       // Gather variants for this turn
       const allVariants = [];
-      for (const tb of turnBranches) {
-        if (Array.isArray(tb.variants)) allVariants.push(...tb.variants);
+      for (const node of turnNodes) {
+        if (Array.isArray(node.variants)) allVariants.push(...node.variants);
       }
       if (allVariants.length === 0) continue;
 
@@ -663,21 +677,21 @@ class TreeBuilder {
       let parentContainer = null;
       if (i === 0) {
         // First pass -> push to root array
-        parentContainer = rootNodes;
+        parentContainer = tree;
       } else {
         // Subsequent passes -> attach to active node of previous turnIndex
         const prevTi = turnIndexes[i - 1];
         parentContainer = activeNodeByTurn.get(prevTi)?.children;
         if (!parentContainer) {
-          // If no active parent, abort further chaining
+          console.error("No active parent found for turn index:", prevTi);
           break;
         }
       }
 
+      // Create nodes for all variants of this turn
       let activeVariantNode = null;
       for (const v of allVariants) {
-        if (!v) continue;
-        let nodeName = "-";
+        let nodeName = "";
         if (v.isActive) {
           const pv = v.preview;
           if (pv || pv === 0) {
@@ -685,7 +699,12 @@ class TreeBuilder {
             if (s) nodeName = s; // only replace if non-empty after trim
           }
         }
-        const node = { name: nodeName, children: [] };
+
+        const node = {
+          name: nodeName,
+          index: v.variantIndex,
+          children: [],
+        };
         parentContainer.push(node);
         if (v.isActive && !activeVariantNode) {
           activeVariantNode = node;
@@ -699,58 +718,57 @@ class TreeBuilder {
       if (activeVariantNode) activeNodeByTurn.set(ti, activeVariantNode);
     }
 
-    return rootNodes;
+    return tree;
   }
 
   /**
-   * Create branches array from variants data
+   * Create nodes array from variants data
    * @param {Array} variants - Array of variant data
-   * @param {Object} branchData - Original branch data
-   * @returns {Array} Array of branch objects with userPrompt and nodes
+   * @param {Object} nodeData - Original node data
+   * @returns {Array} Array of node objects with userPrompt and nodes
    */
-  createBranchesFromVariants(variants, branchData) {
-    const branches = [];
+  createNodesFromVariants(variants, nodeData) {
+    const nodes = [];
 
     variants.forEach((variant, index) => {
       // Extract user prompt from the previous turn or context
-      const userPrompt = this.extractUserPromptForVariant(variant, branchData);
+      const userPrompt = this.extractUserPromptForVariant(variant, nodeData);
 
-      branches.push({
+      nodes.push({
         id: variant.id,
         variantIndex: variant.variantIndex,
         userPrompt: userPrompt,
         preview: variant.preview,
         isActive: variant.isActive,
-        nodes: [], // Can contain sub-nodes which can have their own branches
-        timestamp: variant.timestamp || branchData.timestamp,
+        nodes: [], // Can contain sub-nodes which can have their own nodes
+        timestamp: variant.timestamp || nodeData.timestamp,
         textHash: variant.textHash,
       });
     });
 
-    return branches;
+    return nodes;
   }
 
   /**
    * Extract user prompt that led to this variant
    * @param {Object} variant - Variant data
-   * @param {Object} branchData - Branch data
+   * @param {Object} nodeData - Node data
    * @returns {string} User prompt or fallback text
    */
-  extractUserPromptForVariant(variant, branchData) {
+  extractUserPromptForVariant(variant, nodeData) {
     // Try to find the user prompt from the conversation context
     // This would typically be the previous user message that led to this assistant response
 
-    if (branchData.role === "assistant") {
+    if (nodeData.role === "assistant") {
       // For assistant responses, try to find the preceding user message
-      const userPrompt = this.findPrecedingUserMessage(branchData);
+      const userPrompt = this.findPrecedingUserMessage(nodeData);
       if (userPrompt) {
         return `"${userPrompt}" → Variant ${variant.variantIndex}`;
       }
       return `Response variant ${variant.variantIndex}`;
-    } else if (branchData.role === "user") {
+    } else if (nodeData.role === "user") {
       // For user messages, use the actual content as the prompt
-      const content =
-        variant.preview || branchData.element?.textContent?.trim();
+      const content = variant.preview || nodeData.element?.textContent?.trim();
       if (content && content.length > 3) {
         const truncated =
           content.length > 50 ? content.substring(0, 47) + "..." : content;
@@ -759,18 +777,18 @@ class TreeBuilder {
       return `User input ${variant.variantIndex}`;
     }
 
-    return `${branchData.role} variant ${variant.variantIndex}`;
+    return `${nodeData.role} variant ${variant.variantIndex}`;
   }
 
   /**
    * Find the preceding user message for an assistant response
-   * @param {Object} branchData - Branch data for assistant response
+   * @param {Object} nodeData - Node data for assistant response
    * @returns {string|null} User message text or null if not found
    */
-  findPrecedingUserMessage(branchData) {
+  findPrecedingUserMessage(nodeData) {
     try {
       // Look for the previous conversation turn in the DOM
-      const currentElement = branchData.element;
+      const currentElement = nodeData.element;
       if (!currentElement) return null;
 
       // Find all conversation turns
@@ -862,7 +880,7 @@ class TreeBuilder {
       }
     }
 
-    this.rootBranches = rootTurns; // Keep same property name for compatibility
+    this.rootNodes = rootTurns; // Keep same property name for compatibility
     return rootTurns;
   }
 
@@ -889,22 +907,22 @@ class TreeBuilder {
   }
 
   /**
-   * Update tree when a branch changes (e.g., user navigates to different variant)
-   * @param {Object} updatedBranch - Updated branch data
+   * Update tree when a node changes (e.g., user navigates to different variant)
+   * @param {Object} updatedNode - Updated node data
    */
-  updateBranch(updatedBranch) {
-    const nodeId = updatedBranch.turnId;
+  updateNode(updatedNode) {
+    const nodeId = updatedNode.turnId;
     const existingNode = this.nodes.get(nodeId);
 
     if (existingNode) {
       // Update existing node
-      Object.assign(existingNode, updatedBranch);
+      Object.assign(existingNode, updatedNode);
 
       // Notify callbacks
       this.notifyTreeUpdated();
     } else {
       // Add new node and try to link it appropriately
-      this.addNode(updatedBranch);
+      this.addNode(updatedNode);
 
       // Try to find appropriate parent based on turn index
       let parentId = null;
@@ -912,7 +930,7 @@ class TreeBuilder {
 
       for (const [otherId, otherNode] of this.nodes) {
         if (
-          otherNode.turnIndex < updatedBranch.turnIndex &&
+          otherNode.turnIndex < updatedNode.turnIndex &&
           otherNode.turnIndex > closestTurnIndex
         ) {
           closestTurnIndex = otherNode.turnIndex;
@@ -924,8 +942,8 @@ class TreeBuilder {
         this.linkNodes(parentId, nodeId);
       }
 
-      // Re-identify root branches
-      this.findRootBranches();
+      // Re-identify root nodes
+      this.findRootNodes();
 
       // Notify callbacks
       this.notifyTreeUpdated();
@@ -938,7 +956,7 @@ class TreeBuilder {
   clear() {
     this.nodes.clear();
     this.currentPath = [];
-    this.rootBranches = [];
+    this.rootNodes = [];
   }
 
   /**
@@ -948,7 +966,7 @@ class TreeBuilder {
   getTreeSummary() {
     return {
       nodeCount: this.nodes.size,
-      rootBranches: this.rootBranches.length,
+      rootNodes: this.rootNodes.length,
       currentPathLength: this.currentPath.length,
       nodes: Array.from(this.nodes.keys()),
     };
@@ -977,7 +995,7 @@ class TreeBuilder {
   getTreeState() {
     return {
       nodeCount: this.nodes.size,
-      rootBranches: this.rootBranches,
+      rootNodes: this.rootNodes,
       currentPath: this.currentPath,
       nodes: Array.from(this.nodes.entries()),
     };
@@ -1090,9 +1108,9 @@ class TreeBuilder {
       if (Array.isArray(data.nodes)) {
         const nodesMap = new Map();
         for (const [nodeId, nodeData] of data.nodes) {
-          // Ensure branches property exists, create it if missing
-          if (!nodeData.branches && nodeData.variants) {
-            nodeData.branches = this.createBranchesFromVariants(
+          // Ensure nodes property exists, create it if missing
+          if (!nodeData.nodes && nodeData.variants) {
+            nodeData.nodes = this.createNodesFromVariants(
               nodeData.variants,
               nodeData
             );
@@ -1107,9 +1125,9 @@ class TreeBuilder {
         this.currentPath = [...data.currentPath];
       }
 
-      // Handle root branches
-      if (Array.isArray(data.rootBranches)) {
-        this.rootBranches = [...data.rootBranches];
+      // Handle root nodes
+      if (Array.isArray(data.rootNodes)) {
+        this.rootNodes = [...data.rootNodes];
       }
 
       // Notify that tree was updated
