@@ -255,6 +255,13 @@ async function performInitialScan() {
 
     if (detectedBranches.length > 0) {
       extensionState.treeBuilder.buildFromNodes(detectedBranches);
+      console.log(
+        "extensionState.treeBuilder.saveTreeSnapshot(detectedBranches);"
+      );
+      extensionState.treeBuilder.saveTreeSnapshot(
+        extensionState.conversationId,
+        detectedBranches
+      );
     } else {
       // Create a fallback display showing all turns
       const fallbackBranches = turns.map((turn, index) => {

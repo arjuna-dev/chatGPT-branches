@@ -722,6 +722,78 @@ class TreeBuilder {
   }
 
   /**
+   * Save the current tree snapshot to localStorage
+   * @param {string} conversationId - The conversation ID to use as storage key
+   * @param {Object[]} branches - Array of branch objects (optional, will use internal data if not provided)
+   * @returns {boolean} Success status
+   */
+  saveTreeSnapshot(conversationId, branches) {
+    try {
+      if (!conversationId || typeof conversationId !== "string") {
+        console.error("Invalid conversationId provided to saveTreeSnapshot");
+        return false;
+      }
+
+      // Generate the tree snapshot
+      const treeSnapshot = this.buildCurrentTreeSnapshot(branches);
+
+      // Save to localStorage with key format: tree_<conversationId>
+      const storageKey = `tree_${conversationId}`;
+      const dataToStore = JSON.stringify(treeSnapshot);
+
+      localStorage.setItem(storageKey, dataToStore);
+
+      console.log(
+        `Tree snapshot saved to localStorage with key: ${storageKey}`
+      );
+      return true;
+    } catch (error) {
+      console.error("Error saving tree snapshot to localStorage:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Retrieve the tree snapshot from localStorage
+   * @param {string} conversationId - The conversation ID to use as storage key
+   * @returns {Object[]|null} Tree snapshot array or null if not found/error
+   */
+  loadTreeSnapshot(conversationId) {
+    try {
+      if (!conversationId || typeof conversationId !== "string") {
+        console.error("Invalid conversationId provided to loadTreeSnapshot");
+        return null;
+      }
+
+      // Get data from localStorage with key format: tree_<conversationId>
+      const storageKey = `tree_${conversationId}`;
+      const storedData = localStorage.getItem(storageKey);
+
+      if (!storedData) {
+        console.log(`No tree snapshot found for key: ${storageKey}`);
+        return null;
+      }
+
+      // Parse the JSON data
+      const treeSnapshot = JSON.parse(storedData);
+
+      // Validate that it's an array
+      if (!Array.isArray(treeSnapshot)) {
+        console.error("Invalid tree snapshot format in localStorage");
+        return null;
+      }
+
+      console.log(
+        `Tree snapshot loaded from localStorage with key: ${storageKey}`
+      );
+      return treeSnapshot;
+    } catch (error) {
+      console.error("Error loading tree snapshot from localStorage:", error);
+      return null;
+    }
+  }
+
+  /**
    * Create nodes array from variants data
    * @param {Array} variants - Array of variant data
    * @param {Object} nodeData - Original node data
