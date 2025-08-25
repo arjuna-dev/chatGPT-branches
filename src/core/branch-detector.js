@@ -219,17 +219,11 @@ class BranchDetector {
     if (ariaLabel.toLowerCase().includes("user")) {
       return "user";
     }
-    if (
-      ariaLabel.toLowerCase().includes("assistant") ||
-      ariaLabel.toLowerCase().includes("chatgpt")
-    ) {
-      return "assistant";
-    }
 
     // Method 3: Check for navigation buttons (typically only on assistant messages)
     const hasNavButtons = this.verifyNavigationControls(turnElement);
     if (hasNavButtons) {
-      return "assistant"; // Navigation controls are typically on assistant responses
+      return "user";
     }
 
     // Method 4: Look for edit button (typically only on user messages)
