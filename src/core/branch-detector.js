@@ -28,7 +28,6 @@ class BranchDetector {
 
         // Store in detected branches map
         this.detectedBranches.set(branchInfo.turnId, branchInfo);
-        console.log("detectedBranches set:", this.detectedBranches);
 
         // Notify callbacks
         this.callbacks.onBranchDetected.forEach((callback) => {
@@ -101,8 +100,6 @@ class BranchDetector {
       // Mark which variant is currently active
       activeVariantId: `${id}_v${variantInfo.current}`,
     };
-
-    console.log("Detected branch information:", branchInfo);
 
     return branchInfo;
   }
