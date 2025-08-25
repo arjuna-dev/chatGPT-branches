@@ -196,7 +196,7 @@ function setupComponentCallbacks() {
   extensionState.branchDetector.onBranchDetected((branchInfo) => {
     // Update tree with detected branch
     if (extensionState.treeBuilder) {
-      extensionState.treeBuilder.buildFromBranches([branchInfo]);
+      extensionState.treeBuilder.buildFromNodes([branchInfo]);
     }
   });
 }
@@ -254,7 +254,7 @@ async function performInitialScan() {
       extensionState.branchDetector.detectBranches(turns);
 
     if (detectedBranches.length > 0) {
-      extensionState.treeBuilder.buildFromBranches(detectedBranches);
+      extensionState.treeBuilder.buildFromNodes(detectedBranches);
     } else {
       // Create a fallback display showing all turns
       const fallbackBranches = turns.map((turn, index) => {
@@ -283,7 +283,7 @@ async function performInitialScan() {
       });
 
       if (fallbackBranches.length > 0) {
-        extensionState.treeBuilder.buildFromBranches(fallbackBranches);
+        extensionState.treeBuilder.buildFromNodes(fallbackBranches);
       }
     }
 
@@ -308,7 +308,7 @@ window.rescanBranches = async () => {
     const detectedBranches =
       extensionState.branchDetector.detectBranches(turns);
     if (detectedBranches.length > 0) {
-      extensionState.treeBuilder.buildFromBranches(detectedBranches);
+      extensionState.treeBuilder.buildFromNodes(detectedBranches);
     }
   }
 };
@@ -2089,7 +2089,7 @@ class SimpleNavigationController {
           const detectedBranches =
             extensionState.branchDetector.detectBranches(turns);
           if (detectedBranches.length > 0) {
-            extensionState.treeBuilder.buildFromBranches(detectedBranches);
+            extensionState.treeBuilder.buildFromNodes(detectedBranches);
           } else {
             await renderTabsFromTree();
           }
@@ -2180,7 +2180,7 @@ class SimpleNavigationController {
           const detectedBranches =
             extensionState.branchDetector.detectBranches(turns);
           if (detectedBranches.length > 0) {
-            extensionState.treeBuilder.buildFromBranches(detectedBranches);
+            extensionState.treeBuilder.buildFromNodes(detectedBranches);
             // The tree builder will automatically trigger UI update via callback
           } else {
             // Force UI refresh even if no branches detected
@@ -2248,7 +2248,7 @@ function setupDOMObserver() {
           const detectedBranches =
             extensionState.branchDetector.detectBranches(turns);
           if (detectedBranches.length > 0) {
-            extensionState.treeBuilder.buildFromBranches(detectedBranches);
+            extensionState.treeBuilder.buildFromNodes(detectedBranches);
           }
         }
       }, 500);
