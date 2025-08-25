@@ -617,6 +617,92 @@ class TreeBuilder {
   }
 
   /**
+   * Return current snapshot of the tree.
+   * Shape of each returned node: { name: string, children: [] }
+   * Naming rule: if variant.isActive === true use variant.preview (stringified), else '-'.
+   * @param {Object[]} branches - Array of branch objects (each with turnIndex, variants[])
+   * @returns {Array<{name:string, children:[]}>}
+   */
+  buildCurrentTreeSnapshot(branches) {
+    if (!Array.isArray(branches) || branches.length === 0) return [];
+
+    // 1. Collect & sort unique turnIndex values
+    const turnIndexes = Array.from(
+      new Set(
+        branches
+          .map((b) => (typeof b?.turnIndex === "number" ? b.turnIndex : null))
+          .filter((v) => v !== null)
+      )
+    ).sort((a, b) => a - b);
+    if (turnIndexes.length === 0) return [];
+
+    // Map turnIndex -> branch objects (there might be >1 though usually 1)
+    const byTurn = new Map();
+    for (const b of branches) {
+      if (typeof b?.turnIndex !== "number") continue;
+      if (!byTurn.has(b.turnIndex)) byTurn.set(b.turnIndex, []);
+      byTurn.get(b.turnIndex).push(b);
+    }
+
+    const rootNodes = [];
+    /** Keep reference to the active node structure for each turnIndex */
+    const activeNodeByTurn = new Map();
+
+    // 2. Iterate N passes (each turnIndex)
+    for (let i = 0; i < turnIndexes.length; i++) {
+      const ti = turnIndexes[i];
+      const turnBranches = byTurn.get(ti) || [];
+      // Gather variants for this turn
+      const allVariants = [];
+      for (const tb of turnBranches) {
+        if (Array.isArray(tb.variants)) allVariants.push(...tb.variants);
+      }
+      if (allVariants.length === 0) continue;
+
+      // Determine parent container to append to
+      let parentContainer = null;
+      if (i === 0) {
+        // First pass -> push to root array
+        parentContainer = rootNodes;
+      } else {
+        // Subsequent passes -> attach to active node of previous turnIndex
+        const prevTi = turnIndexes[i - 1];
+        parentContainer = activeNodeByTurn.get(prevTi)?.children;
+        if (!parentContainer) {
+          // If no active parent, abort further chaining
+          break;
+        }
+      }
+
+      let activeVariantNode = null;
+      for (const v of allVariants) {
+        if (!v) continue;
+        let nodeName = "-";
+        if (v.isActive) {
+          const pv = v.preview;
+          if (pv || pv === 0) {
+            const s = String(pv).trim();
+            if (s) nodeName = s; // only replace if non-empty after trim
+          }
+        }
+        const node = { name: nodeName, children: [] };
+        parentContainer.push(node);
+        if (v.isActive && !activeVariantNode) {
+          activeVariantNode = node;
+        }
+      }
+      // Fallback: if no active variant flagged, use first child as active for chaining
+      if (!activeVariantNode && parentContainer.length) {
+        activeVariantNode =
+          parentContainer[parentContainer.length - allVariants.length];
+      }
+      if (activeVariantNode) activeNodeByTurn.set(ti, activeVariantNode);
+    }
+
+    return rootNodes;
+  }
+
+  /**
    * Create branches array from variants data
    * @param {Array} variants - Array of variant data
    * @param {Object} branchData - Original branch data
